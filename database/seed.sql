@@ -255,20 +255,17 @@ INSERT INTO AccessLog (user_id, action, table_name, timestamp, status) VALUES
 -- TechCorp users
 (2, 'INSERT', 'Customer', '2024-01-01 09:00:00', 'Success'),
 (2, 'UPDATE', 'Subscription', '2024-01-01 10:30:00', 'Success'),
-(3, 'SELECT', 'Invoice', '2024-01-02 14:20:00', 'Success'),
 (3, 'INSERT', 'Customer', '2024-01-05 11:15:00', 'Success'),
 (4, 'UPDATE', 'Plan', '2024-01-10 09:30:00', 'Failure'),
 
 -- Global Retail users
 (8, 'INSERT', 'Customer', '2024-01-15 11:00:00', 'Success'),
 (9, 'UPDATE', 'Subscription', '2024-01-16 15:30:00', 'Success'),
-(10, 'SELECT', 'Invoice', '2024-01-20 10:45:00', 'Success'),
 (8, 'DELETE', 'Customer', '2024-02-01 14:20:00', 'Failure'),
 
 -- HealthPlus users
 (14, 'INSERT', 'Customer', '2024-02-05 09:15:00', 'Success'),
 (15, 'UPDATE', 'Subscription', '2024-02-10 13:40:00', 'Success'),
-(16, 'SELECT', 'Invoice', '2024-02-15 16:30:00', 'Success'),
 
 -- EduSmart users
 (19, 'INSERT', 'Customer', '2024-02-20 10:00:00', 'Success'),
@@ -277,7 +274,6 @@ INSERT INTO AccessLog (user_id, action, table_name, timestamp, status) VALUES
 -- FinancePro users
 (22, 'INSERT', 'Customer', '2024-03-05 09:45:00', 'Success'),
 (23, 'UPDATE', 'Subscription', '2024-03-10 14:15:00', 'Success'),
-(24, 'SELECT', 'Invoice', '2024-03-15 10:30:00', 'Success'),
 (25, 'UPDATE', 'Payment', '2024-03-20 16:00:00', 'Success'),
 (22, 'INSERT', 'Customer', '2024-04-01 09:30:00', 'Success');
 
