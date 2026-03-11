@@ -22,7 +22,6 @@ CREATE TABLE Client (
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
     address TEXT,
-    registration_date DATE NOT NULL DEFAULT (CURRENT_DATE),
     status ENUM('Active', 'Suspended', 'Inactive') NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
@@ -88,7 +87,7 @@ CREATE TABLE User (
         REFERENCES Client(client_id) ON DELETE CASCADE,
     CONSTRAINT fk_user_created_by FOREIGN KEY (created_by) 
         REFERENCES User(user_id) ON DELETE SET NULL,
-    CONSTRAINT unq_user_email UNIQUE (email),
+    CONSTRAINT unq_user_email UNIQUE (client_id, email),
     CONSTRAINT unq_username_per_client UNIQUE (client_id, username),
     CONSTRAINT chk_tier_level CHECK (tier_level IN (1, 2, 3)),
     CONSTRAINT chk_user_status CHECK (status IN ('Active', 'Inactive', 'Suspended'))
@@ -100,7 +99,7 @@ CREATE TABLE Subscription (
     client_id INT NOT NULL,
     customer_id INT NULL,
     plan_id INT NOT NULL,
-    start_date DATE NOT NULL,
+    start_date DATE NOT NULL DEFAULT (CURRENT_DATE),
     end_date DATE NULL,
     status ENUM('Active', 'Expired', 'Cancelled') NOT NULL DEFAULT 'Active',
     auto_renew BOOLEAN NOT NULL DEFAULT TRUE,
@@ -208,6 +207,7 @@ CREATE TABLE AccessLog (
 CREATE TABLE UserSession (
     session_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
+    canAccessEditor BOOLEAN DEFAULT TRUE,
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     logout_time DATETIME NULL,
     
@@ -215,7 +215,8 @@ CREATE TABLE UserSession (
         REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT chk_session_times CHECK (
         logout_time IS NULL OR logout_time > login_time
-    )
+    ),
+    CONSTRAINT chk_duplicatae_user UNIQUE (user_id, logout_time)
     
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -284,7 +285,7 @@ BEGIN
     ) VALUES (
         NEW.subscription_id,
         NEW.start_date,
-        DATE_ADD(NEW.start_date, INTERVAL 15 DAY),
+        DATE_ADD(NEW.start_date, INTERVAL 2 DAY),
         plan_price
     );
 END$$
