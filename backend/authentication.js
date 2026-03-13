@@ -154,9 +154,9 @@ const login = async (req, res) => {
         if (connection) {
             try {
                 await connection.rollback();
-                console.log(`[Logout] Transaction rolled back due to error: ${error.message}`);
+                console.log(`[Login] Transaction rolled back due to error: ${error.message}`);
             } catch (rollbackError) {
-                console.error('[Logout] Rollback failed:', rollbackError);
+                console.error('[Login] Rollback failed:', rollbackError);
             }
         }
         if (error.message.includes('chk_duplicate_user')) {

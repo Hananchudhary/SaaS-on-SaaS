@@ -130,10 +130,11 @@ const getTableNamesFromAST = (ast) => {
  * Generate a tenant isolation WHERE condition for a specific table.
  * clientId is already an integer from session, but we cast to be safe.
  */
-const generateTenantCondition = (tableName, clientId, tableAliases = {}) => {
+const generateTenantCondition = (tableName, clientId, tablealias) => {
     if (clientId === 1) return null; // system sees all
     const safeClientId = parseInt(clientId, 10);
-    switch (tableName) {
+    const alias = tablealias ? `${tablealias}.` : '';
+    switch (tableName.toLowerCase()) {
         case 'plan':
         case 'customer':
         case 'user':
@@ -207,7 +208,7 @@ const injectTenantConditions = (ast, tenantCondition, clientId) => {
  * Takes the original SQL, clientId, and pre‑extracted table list.
  */
 const enforceTenantIsolation = (sql, clientId, tables) => {
-    if (clientId === 1) return sql; // system client sees all
+    if (clientId === 1 || tables.length === 0) return sql; // system client sees all
 
     try {
         const parsed = parseQuery(sql); // we reuse parseQuery to get ast/type
@@ -219,7 +220,6 @@ const enforceTenantIsolation = (sql, clientId, tables) => {
         if (parsed.type === 'INSERT') {
             return sql;
         }
-
         const tenantCondition = buildTenantConditions(tables, clientId);
         if (!tenantCondition) return sql;
 
@@ -409,14 +409,14 @@ const executeQuery = async (req, res) => {
             const response = { success: true, data: {} };
 
             if (operation === 'SELECT') {
-                response.data.rows_count = result.length;
-                response.data.rows = result;  // actual rows returned
+                response.data.rows_count = results.length;
+                response.data.rows = results;  // actual rows returned
             } 
             else if (operation === 'INSERT') {
-                response.data.insertId = result.insertId;
+                response.data.insertId = results.insertId;
             } 
             else if (operation === 'UPDATE' || operation === 'DELETE') {
-                response.data.affectedRows = result.affectedRows;
+                response.data.affectedRows = results.affectedRows;
             } 
             else {
                 response.data.message = 'Query executed';

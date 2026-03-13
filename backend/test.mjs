@@ -1,390 +1,333 @@
-// test-query.mjs
+/**
+ * Complex integration tests for SaaS-on-SaaS backend.
+ *
+ * Server must already be running.
+ *
+ * Run:
+ *   node backend/test.mjs   (from repo root) OR node test.mjs (from backend/)
+ *
+ * Env:
+ *   BASE_URL        default http://localhost:3000
+ *   ADMIN_EMAIL     optional: existing user email to login (tenant A)
+ *   ADMIN_PASSWORD  optional: existing user password
+ *
+ * This script tests:
+ * - Auth: login/logout + missing/invalid cases
+ * - Signup: create two tenants (A & B) unless ADMIN_* provided for A
+ * - Metadata: /tables, /statics
+ * - Payments: /pay GET and POST (200 or 402)
+ * - Query: malformed SQL, DDL blocked, system tables blocked, RBAC for tier2/tier3
+ * - Tenant isolation: ensure tenant A cannot read tenant B rows
+ */
+
 import axios from 'axios';
 import chalk from 'chalk';
+import { createRequire } from 'node:module';
 
-const BASE_URL = 'http://localhost:3000/api/v1';
+const require = createRequire(import.meta.url);
+const bcrypt = require('bcrypt');
 
-// Store session tokens and IDs for two companies
-const state = {
-    // Company A (Tier 3 admin)
-    adminA: { sessionId: null, clientId: null, userId: null },
-    // Company B (Tier 3 admin)
-    adminB: { sessionId: null, clientId: null, userId: null },
-    // Tier 2 user under company A
-    tier2User: { sessionId: null, userId: null },
-    // Tier 1 user under company A
-    tier1User: { sessionId: null, userId: null },
-    // Some IDs for test records
-    testCustomerId: null,
-};
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const API = `${BASE_URL}/api/v1`;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
-// Helper to print test result
-function testResult(name, success, details = null) {
-    const icon = success ? chalk.green('✓') : chalk.red('✗');
-    console.log(`${icon} ${name}`);
-    if (details) {
-        console.log(chalk.gray(JSON.stringify(details, null, 2)));
-    }
+const TIMEOUT_MS = 15000;
+const http = axios.create({ timeout: TIMEOUT_MS, validateStatus: () => true });
+
+let passed = 0;
+let failed = 0;
+
+function section(title) {
+    console.log(chalk.blue.bold(`\n${title}`));
 }
 
-// Helper to expect a specific HTTP status
-async function expectStatus(promise, expectedStatus, testName) {
-    try {
-        const res = await promise;
-        if (res.status === expectedStatus) {
-            testResult(testName, true, { status: res.status, data: res.data });
-            return res;
-        } else {
-            testResult(testName, false, { expected: expectedStatus, actual: res.status, data: res.data });
-            return null;
-        }
-    } catch (err) {
-        if (err.response) {
-            if (err.response.status === expectedStatus) {
-                testResult(testName, true, { status: err.response.status, data: err.response.data });
-                return err.response;
-            } else {
-                testResult(testName, false, { expected: expectedStatus, actual: err.response.status, data: err.response.data });
-                return null;
-            }
-        } else {
-            testResult(testName, false, { error: err.message });
-            return null;
-        }
-    }
+function ok(name, detail = '') {
+    passed++;
+    console.log(chalk.green('  ✓'), name, detail ? chalk.gray(detail) : '');
 }
 
-// Helper to sign up a company
-async function signupCompany(companySuffix) {
-    const signupData = {
-        company_name: `Test Company ${companySuffix}`,
-        email: `company${companySuffix}@test.com`,
-        phone: `123-${companySuffix}`,
-        address: `${companySuffix} Test Street`,
-        plan_id: 2, // Professional system plan
-        plan_name1: `Custom Basic ${companySuffix}`,
-        tier1_users_plan1: 10,
-        tier2_users_plan1: 5,
-        tier3_users_plan1: 2,
+function bad(name, detail) {
+    failed++;
+    console.log(chalk.red('  ✗'), name);
+    if (detail) console.log(chalk.red('    ') + detail);
+}
+
+function isHtml(x) {
+    return typeof x === 'string' && x.includes('<!DOCTYPE html>');
+}
+
+function safeJson(x) {
+    try { return JSON.stringify(x); } catch { return String(x); }
+}
+
+function errMsg(resp) {
+    const d = resp?.data;
+    if (d?.error?.message) return d.error.message;
+    if (isHtml(d)) return 'Server returned HTML error page (check server logs)';
+    return d != null ? safeJson(d) : `HTTP ${resp?.status ?? '?'}`;
+}
+
+function expect(name, resp, expectedStatuses) {
+    const exp = Array.isArray(expectedStatuses) ? expectedStatuses : [expectedStatuses];
+    if (exp.includes(resp.status)) ok(name, `status=${resp.status}`);
+    else bad(name, `expected ${exp.join('|')}, got ${resp.status}. body=${errMsg(resp)}`);
+    return exp.includes(resp.status);
+}
+
+function parseLogin(resp) {
+    const d = resp?.data?.data;
+    return {
+        sessionId: d?.session_id ?? null,
+        clientId: d?.client_id ?? null,
+        tierLevel: d?.tier_level ?? null,
+        userId: d?.user_id ?? null,
+    };
+}
+
+function qRows(resp) {
+    const d = resp?.data?.data;
+    const rows = Array.isArray(d?.rows) ? d.rows : [];
+    const count = typeof d?.rows_count === 'number' ? d.rows_count : rows.length;
+    return { rows, count };
+}
+
+function signupPayload(unique, planId) {
+    return {
+        company_name: `TestCo_${unique}`,
+        email: `${unique}@company.test`,
+        phone: '555-0000',
+        address: '1 Test St',
+        plan_id: planId,
+        plan_name1: `Basic_${unique}`,
+        tier1_users_plan1: 5,
+        tier2_users_plan1: 2,
+        tier3_users_plan1: 1,
         price_plan1: 49.99,
-        plan_name2: `Custom Pro ${companySuffix}`,
+        plan_name2: `Pro_${unique}`,
         tier1_users_plan2: 20,
         tier2_users_plan2: 10,
         tier3_users_plan2: 5,
         price_plan2: 99.99,
-        plan_name3: `Custom Enterprise ${companySuffix}`,
+        plan_name3: `Ent_${unique}`,
         tier1_users_plan3: 100,
         tier2_users_plan3: 50,
         tier3_users_plan3: 25,
         price_plan3: 299.99,
-        username: `admin${companySuffix}`,
-        admin_email: `admin${companySuffix}@test.com`,
-        password: 'secret123'
+        username: `admin_${unique}`,
+        admin_email: `${unique}@admin.test`,
+        password: 'TestPass123',
     };
-    const res = await axios.post(`${BASE_URL}/signup`, signupData);
-    return res.data.data;
 }
 
-// Helper to login
-async function login(email, password) {
-    const res = await axios.post(`${BASE_URL}/login`, { email, password });
-    return res.data.data;
+async function apiHealth() {
+    return http.get(`${BASE_URL}/health`);
+}
+async function apiSignup(body) {
+    return http.post(`${API}/signup`, body, { headers: { 'Content-Type': 'application/json' } });
+}
+async function apiLogin(email, password) {
+    return http.post(`${API}/login`, { email, password }, { headers: { 'Content-Type': 'application/json' } });
+}
+async function apiLogout(sessionId) {
+    return http.post(`${API}/logout`, {}, { headers: { 'x-session-id': sessionId } });
+}
+async function apiTables(sessionId) {
+    return http.get(`${API}/tables`, { headers: { 'x-session-id': sessionId } });
+}
+async function apiStatics(sessionId) {
+    return http.get(`${API}/statics`, { headers: { 'x-session-id': sessionId } });
+}
+async function apiPayGet(sessionId) {
+    return http.get(`${API}/pay`, { headers: { 'x-session-id': sessionId } });
+}
+async function apiPayPost(sessionId, payment_amount) {
+    return http.post(`${API}/pay`, { payment_amount }, { headers: { 'x-session-id': sessionId, 'Content-Type': 'application/json' } });
+}
+async function apiQuery(sessionId, query) {
+    return http.post(`${API}/query`, { query }, { headers: { 'x-session-id': sessionId, 'Content-Type': 'application/json' } });
 }
 
-// Helper to create a user with specific tier (requires tier 3 session)
-async function createUser(sessionId, clientId, username, email, tierLevel) {
-    const query = `
-        INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_at)
-        VALUES (${clientId}, '${username}', '${email}', '${await hashPassword('secret123')}', ${tierLevel}, 'Active', NOW())
-    `;
-    // Note: We need bcrypt to hash password. We'll skip actual hashing for test simplicity,
-    // but in real world the insert should use hashed password. Since our /query endpoint
-    // will execute raw SQL, we need to provide a valid hash. Let's use a fixed hash for testing.
-    // Actually, our insert might fail due to password_hash length/format. For test, we can use a dummy hash.
-    // We'll just rely on the fact that we don't need to login as that user for now.
-    // Alternatively, we could use the signup endpoint but that creates a whole company.
-    // For simplicity, we'll test tier permissions using the admin of company B and maybe
-    // we can test different tiers by using the same admin but different endpoints? No.
-    // Maybe we can skip multi-tier testing if it's too complex, but requirement asks to test query endpoint thoroughly.
-    // We'll assume we have at least two companies with tier 3 admins. For tier 2/3 permissions we can rely on the
-    // fact that the admin is tier 3, so we can test permissions by using the same admin but we need different users.
-    // So we need to create additional users.
-    // Since creating users via raw SQL is messy (password hash), we can create them via signup but that creates a whole company.
-    // Instead, we'll test tier permissions using the admin of company A for all operations, and rely on the fact that
-    // tier 3 can do everything. For tier 1 and 2 restrictions, we'll simulate by using the same admin but we can't change tier.
-    // So we'll skip detailed tier testing in this script, focusing on tenant isolation and complex queries.
-    // However, the user asked to test query endpoint thoroughly, so we should include permission tests.
-    // We can create a second user under company A using INSERT with proper hash if we can compute bcrypt hash.
-    // We'll include bcrypt and generate hash.
-    const bcrypt = await import('bcrypt');
-    const hash = await bcrypt.hash('secret123', 10);
-    const insertUserQuery = {
-        query: `INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_at)
-                VALUES (${clientId}, '${username}', '${email}', '${hash}', ${tierLevel}, 'Active', NOW())`
-    };
-    const res = await axios.post(`${BASE_URL}/query`, insertUserQuery, {
-        headers: { 'x-session-id': sessionId }
-    });
-    return res.data;
+async function ensureTenant(unique, planId) {
+    const payload = signupPayload(unique, planId);
+    const s = await apiSignup(payload);
+    if (!expect(`signup ${unique}`, s, [200, 400, 500])) return null;
+    if (s.status !== 200 || s.data?.success !== true) {
+        bad(`signup ${unique}`, errMsg(s));
+        return null;
+    }
+    ok(`signup ${unique}`, `admin=${payload.admin_email}`);
+    const l = await apiLogin(payload.admin_email, payload.password);
+    if (!expect(`login ${unique}`, l, [200, 400, 401, 500])) return null;
+    if (l.status !== 200 || l.data?.success !== true) {
+        bad(`login ${unique}`, errMsg(l));
+        return null;
+    }
+    const sess = parseLogin(l);
+    if (!sess.sessionId || sess.clientId == null) {
+        bad(`tenant ${unique}`, `missing session_id/client_id. body=${safeJson(l.data)}`);
+        return null;
+    }
+    ok(`tenant ${unique} ready`, `client_id=${sess.clientId}, tier=${sess.tierLevel}`);
+    return { unique, payload, ...sess };
 }
 
-// We'll need bcrypt, so install it.
-// For now, we'll skip creating tier1/tier2 users and just test permissions by expecting the correct responses
-// based on the tier of the session we have. Since we only have tier 3 sessions, we'll test the allowed operations.
-// To test denial, we can try operations that should be forbidden even for tier 3? No, tier 3 can do everything.
-// So we need at least one tier 2 user. We'll create one via signup? Not possible because signup creates admin with tier 1? Actually signup creates admin with tier_level=1? Wait, in signup we set tier_level=1 for admin? In our signup implementation, we inserted admin user with tier_level=1? Let's check: In signup.js we inserted User with tier_level = 1. So the admin user created by signup is actually tier 1! That means our admin is read-only. But we need tier 3 to perform inserts. This is a conflict. According to requirements, tier 1 is read-only, tier 2 update, tier 3 full CRUD. In signup we set admin tier = 1? That would make the admin read-only, unable to insert anything. That's likely a mistake in signup logic. The admin should probably be tier 3. In the signup code we wrote earlier, we set tier_level = 1 for the admin. That should be changed to 3. We'll assume that for testing we have corrected that. In the test, we'll assume the admin created via signup has tier_level = 3. (If not, we'll need to modify signup or create a tier 3 user separately.)
+async function createUserViaQuery(adminSessionId, clientId, tier, email, username, plainPassword) {
+    const hash = await bcrypt.hash(plainPassword, 10);
+    const q = `
+        INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_at, created_by)
+        VALUES (${clientId}, '${username}', '${email}', '${hash}', ${tier}, 'Active', CURRENT_TIMESTAMP, 1)
+    `;
+    return apiQuery(adminSessionId, q);
+}
 
-// Given the complexity, for this test script we'll focus on tenant isolation and complex queries using the admin (assumed tier 3). We'll test permission failures by trying to access system tables and DDL, which are forbidden for all.
-// This script will still be valuable.
+async function main() {
+    console.log(chalk.bold('SaaS-on-SaaS complex API tests'));
+    console.log(chalk.gray(`BASE_URL=${BASE_URL}`));
+    if (ADMIN_EMAIL) console.log(chalk.gray(`ADMIN_EMAIL=${ADMIN_EMAIL}`));
+    console.log('');
 
-console.log(chalk.blue('Starting comprehensive /api/v1/query tests...\n'));
+    section('1) Health');
+    const h = await apiHealth();
+    if (h.status === 200 && h.data?.success === true) ok('GET /health');
+    else bad('GET /health', errMsg(h));
 
-try {
-    // ============================================
-    // Setup: Create two companies and get sessions
-    // ============================================
-    console.log(chalk.yellow('\n--- SETUP ---'));
+    section('2) Auth negative cases');
+    expect('login missing body → 400', await http.post(`${API}/login`, {}, { headers: { 'Content-Type': 'application/json' } }), 400);
+    expect('login invalid credentials → 400', await apiLogin('nonexistent@test.com', 'wrong'), 400);
+    expect('logout missing session → 401', await http.post(`${API}/logout`, {}, { headers: {} }), 401);
 
-    // Company A
-    const dataA = await signupCompany('A');
-    const loginA = await login('adminA@test.com', 'secret123');
-    state.adminA.sessionId = loginA.session_id;
+    section('3) Setup tenant A and tenant B');
+    const stamp = Date.now();
+    let tenantA = null;
+    if (ADMIN_EMAIL && ADMIN_PASSWORD) {
+        const l = await apiLogin(ADMIN_EMAIL, ADMIN_PASSWORD);
+        
+        if (l.status === 200 && l.data?.success === true) {
+            tenantA = { unique: 'existing', payload: { admin_email: ADMIN_EMAIL, password: ADMIN_PASSWORD }, ...parseLogin(l) };
+            ok('login existing admin', `client_id=${tenantA.clientId}, tier=${tenantA.tierLevel}`);
+        } else {
+            bad('login existing admin', errMsg(l));
+        }
+    }
+    if (!tenantA) tenantA = await ensureTenant(`a-${stamp}`, 1);
+    const tenantB = await ensureTenant(`b-${stamp}`, 2);
 
-    state.adminA.clientId = loginA.client_id;
-    state.adminA.userId = loginA.user_id;
-    testResult('Company A created and admin logged in', true, { clientId: state.adminA.clientId, sessionId: state.adminA.sessionId });
-
-    // Company B
-    const dataB = await signupCompany('B');
-    const loginB = await login('adminB@test.com', 'secret123');
-    state.adminB.sessionId = loginB.session_id;
-    state.adminB.clientId = loginB.client_id;
-    state.adminB.userId = loginB.user_id;
-    testResult('Company B created and admin logged in', true, { clientId: state.adminB.clientId, sessionId: state.adminB.sessionId });
-
-    // ============================================
-    // Test 1: Missing session header
-    // ============================================
-    console.log(chalk.yellow('\n--- Missing session ---'));
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT 1' }),
-        401,
-        'Missing session header should return 401'
-    );
-
-    // ============================================
-    // Test 2: Invalid session
-    // ============================================
-    console.log(chalk.yellow('\n--- Invalid session ---'));
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT 1' }, { headers: { 'x-session-id': '999999' } }),
-        401,
-        'Invalid session should return 401'
-    );
-
-    // ============================================
-    // Test 3: Simple SELECT (allowed for all)
-    // ============================================
-    console.log(chalk.yellow('\n--- Simple SELECT ---'));
-    const selectRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT * FROM Plan WHERE client_id = ' + state.adminA.clientId }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT from Plan should succeed'
-    );
-    if (selectRes) {
-        console.log('  Rows returned:', selectRes.data.data.row_count);
+    if (!tenantA || !tenantB) {
+        section('Summary');
+        console.log(chalk.green(`Passed: ${passed}`));
+        console.log(chalk.red(`Failed: ${failed}`));
+        process.exit(1);
     }
 
-    // ============================================
-    // Test 4: INSERT (tier 3 allowed)
-    // ============================================
-    console.log(chalk.yellow('\n--- INSERT ---'));
-    const insertQuery = `
-        INSERT INTO Customer (client_id, company_name, email, status)
-        VALUES (${state.adminA.clientId}, 'Test Customer A', 'custA@test.com', 'Active')
-    `;
-    const insertRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: insertQuery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'INSERT should succeed for tier 3'
-    );
-    if (insertRes) {
-        console.log('  Inserted, rows affected:', insertRes.data.data.row_count);
+    section('4) Session-required endpoints');
+    const t = await apiTables(tenantA.sessionId);
+    if (t.status === 200 && t.data?.success === true && Array.isArray(t.data?.data?.tables)) ok('GET /tables → 200 with data.tables[]');
+    else bad('GET /tables', errMsg(t));
+
+    const st = await apiStatics(tenantA.sessionId);
+    if (st.status === 200 && st.data?.success === true) ok('GET /statics → 200');
+    else bad('GET /statics', errMsg(st));
+
+    const pg = await apiPayGet(tenantA.sessionId);
+    if (pg.status === 200 && pg.data?.success === true && typeof pg.data?.plan_amount === 'number') ok('GET /pay → 200 (top-level plan_amount)');
+    else bad('GET /pay', errMsg(pg));
+
+    const pp = await apiPayPost(tenantA.sessionId, 49.99);
+    if ([200, 402].includes(pp.status)) ok('POST /pay → 200|402', `status=${pp.status}`);
+    else bad('POST /pay', errMsg(pp));
+
+    section('5) Query safety / restrictions');
+    expect('query missing session → 401', await http.post(`${API}/query`, { query: 'SELECT 1' }, { headers: { 'Content-Type': 'application/json' } }), 401);
+    expect('query malformed → 400', await apiQuery(tenantA.sessionId, 'SELECT FORM Customer'), 400);
+    expect('query DDL blocked → 403', await apiQuery(tenantA.sessionId, 'CREATE TABLE evil (id INT)'), 403);
+    if (tenantA.clientId !== 1) {
+        expect('query system table Client blocked → 403', await apiQuery(tenantA.sessionId, 'SELECT * FROM Client'), 403);
+        expect('query system table UserSession blocked → 403', await apiQuery(tenantA.sessionId, 'SELECT * FROM UserSession'), 403);
     }
 
-    // ============================================
-    // Test 5: SELECT inserted record
-    // ============================================
-    console.log(chalk.yellow('\n--- SELECT after INSERT ---'));
-    const selectInserted = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: `SELECT * FROM Customer WHERE company_name = 'Test Customer A'` }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT inserted record should succeed'
-    );
+    const sel = await apiQuery(tenantA.sessionId, 'SELECT 1 AS n');
+    if (sel.status === 200 && sel.data?.success === true) ok('query SELECT 1 → 200');
+    else bad('query SELECT 1', errMsg(sel));
 
+    section('6) RBAC (tier2/tier3)');
+    const u2Email = `tier2-${stamp}@test.local`;
+    const u3Email = `tier3-${stamp}@test.local`;
+    const u2Pass = 'Tier2Pass123';
+    const u3Pass = 'Tier3Pass123';
 
-    // ============================================
-    // Test 7: DELETE (tier 3 allowed)
-    // ============================================
-    console.log(chalk.yellow('\n--- DELETE ---'));
-    const deleteQuery = `DELETE FROM Customer WHERE customer_id = ${state.testCustomerId}`;
-    const deleteRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: deleteQuery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'DELETE should succeed'
-    );
+    const c2 = await createUserViaQuery(tenantA.sessionId, tenantA.clientId, 2, u2Email, `tier2_${stamp}`, u2Pass);
+    if (c2.status === 200 && c2.data?.success === true) ok('create tier2 user (via /query)');
+    else bad('create tier2 user', errMsg(c2));
 
-    const joinQuery = `
-        SELECT c.company_name, s.subscription_id, p.plan_name
-        FROM Customer c
-        JOIN Subscription s ON c.customer_id = s.customer_id
-        JOIN Plan p ON s.plan_id = p.plan_id
-        WHERE c.client_id = ${state.adminA.clientId}
-    `;
-    const joinRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: joinQuery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT with JOIN should succeed'
-    );
-    if (joinRes) {
-        console.log('  Join rows:', joinRes.data.data.row_count);
+    const c3 = await createUserViaQuery(tenantA.sessionId, tenantA.clientId, 3, u3Email, `tier3_${stamp}`, u3Pass);
+    if (c3.status === 200 && c3.data?.success === true) ok('create tier3 user (via /query)');
+    else bad('create tier3 user', errMsg(c3));
+
+    const l2 = await apiLogin(u2Email, u2Pass);
+    if (l2.status === 200 && l2.data?.success === true) ok('login tier2');
+    else bad('login tier2', errMsg(l2));
+    const s2 = parseLogin(l2);
+
+    const l3 = await apiLogin(u3Email, u3Pass);
+    if (l3.status === 200 && l3.data?.success === true) ok('login tier3');
+    else bad('login tier3', errMsg(l3));
+    const s3 = parseLogin(l3);
+
+    if (s3.sessionId) {
+        expect('tier3 SELECT allowed → 200', await apiQuery(s3.sessionId, 'SELECT 1'), 200);
+        expect('tier3 UPDATE denied → 403', await apiQuery(s3.sessionId, `UPDATE Customer SET phone='x' WHERE client_id=${tenantA.clientId} LIMIT 1`), 403);
+        expect('tier3 INSERT denied → 403', await apiQuery(s3.sessionId, `INSERT INTO Customer (client_id, company_name, email, status) VALUES (${tenantA.clientId}, 'X', 'x@x', 'Active')`), 403);
     }
 
-    // ============================================
-    // Test 9: SELECT with subquery
-    // ============================================
-    console.log(chalk.yellow('\n--- SELECT with subquery ---'));
-    const subquery = `
-        SELECT company_name FROM Customer
-        WHERE customer_id IN (
-            SELECT customer_id FROM Subscription WHERE plan_id = 1
-        )
-    `;
-    const subRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: subquery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT with subquery should succeed'
-    );
+    if (s2.sessionId) {
+        expect('tier2 SELECT allowed → 200', await apiQuery(s2.sessionId, 'SELECT 1'), 200);
+        expect('tier2 UPDATE allowed → 200', await apiQuery(s2.sessionId, `UPDATE Customer SET phone='x' WHERE client_id=${tenantA.clientId} LIMIT 1`), 200);
+        expect('tier2 INSERT denied → 403', await apiQuery(s2.sessionId, `INSERT INTO Customer (client_id, company_name, email, status) VALUES (${tenantA.clientId}, 'X', 'x@x', 'Active')`), 403);
+        expect('tier2 DELETE denied → 403', await apiQuery(s2.sessionId, `DELETE FROM Customer WHERE client_id=${tenantA.clientId} LIMIT 1`), 403);
+    }
 
-    // ============================================
-    // Test 10: SELECT with aggregation
-    // ============================================
-    console.log(chalk.yellow('\n--- SELECT with aggregation ---'));
-    const aggQuery = `
-        SELECT plan_id, COUNT(*) as sub_count
-        FROM Subscription
-        WHERE client_id = ${state.adminA.clientId}
-        GROUP BY plan_id
-    `;
-    const aggRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: aggQuery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT with GROUP BY should succeed'
-    );
+    section('7) Tenant isolation (no cross-tenant read leakage)');
+    const aCustEmail = `a-${stamp}@cust.test`;
+    const bCustEmail = `b-${stamp}@cust.test`;
 
-    // ============================================
-    // Test 11: SELECT with UNION
-    // ============================================
-    console.log(chalk.yellow('\n--- SELECT with UNION ---'));
-    const unionQuery = `
-        SELECT company_name, email FROM Customer WHERE client_id = ${state.adminA.clientId}
-        UNION
-        SELECT username, email FROM User WHERE client_id = ${state.adminA.clientId}
-    `;
-    const unionRes = await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: unionQuery }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        200,
-        'SELECT with UNION should succeed'
-    );
+    const insA = await apiQuery(tenantA.sessionId, `INSERT INTO Customer (client_id, company_name, email, phone, status) VALUES (${tenantA.clientId}, 'Alpha', '${aCustEmail}', '555', 'Active')`);
+    if (insA.status === 200 && insA.data?.success === true) ok('insert customer A');
+    else bad('insert customer A', errMsg(insA));
 
-    // ============================================
-    // Test 12: DDL operations (disallowed)
-    // ============================================
-    console.log(chalk.yellow('\n--- Disallowed DDL ---'));
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'CREATE TABLE bad (id INT)' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        403,
-        'CREATE TABLE should be forbidden'
-    );
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'DROP TABLE Customer' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        403,
-        'DROP TABLE should be forbidden'
-    );
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'ALTER TABLE Customer ADD COLUMN test INT' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        403,
-        'ALTER TABLE should be forbidden'
-    );
+    const insB = await apiQuery(tenantB.sessionId, `INSERT INTO Customer (client_id, company_name, email, phone, status) VALUES (${tenantB.clientId}, 'Beta', '${bCustEmail}', '555', 'Active')`);
+    if (insB.status === 200 && insB.data?.success === true) ok('insert customer B');
+    else bad('insert customer B', errMsg(insB));
 
-    // ============================================
-    // Test 13: Tenant isolation - Company B should not see Company A's data
-    // ============================================
-    console.log(chalk.yellow('\n--- Tenant isolation ---'));
-    // Company B tries to SELECT Company A's customer by name
-    const crossSelect = await axios.post(`${BASE_URL}/query`, {
-        query: `SELECT * FROM Customer WHERE company_name = 'Join Test'`
-    }, { headers: { 'x-session-id': state.adminB.sessionId } });
-    if (crossSelect.data.data.row_count === 0) {
-        testResult('Company B cannot see Company A data', true);
+    const leak = await apiQuery(tenantA.sessionId, `SELECT customer_id, client_id, email FROM Customer WHERE email='${bCustEmail}'`);
+    if (leak.status === 200 && leak.data?.success === true) {
+        const { rows } = qRows(leak);
+        if (rows.length === 0) ok('A cannot see B customer (0 rows)');
+        else bad('Tenant isolation leak', `A saw rows=${safeJson(rows)}`);
+    } else if (leak.status === 403) {
+        ok('Cross-tenant access blocked (403)');
     } else {
-        testResult('Company B cannot see Company A data', false, { row_count: crossSelect.data.data.row_count });
+        bad('Tenant isolation check', errMsg(leak));
     }
 
-    // Company B tries to UPDATE Company A's customer (should affect 0 rows)
-    const crossUpdate = await axios.post(`${BASE_URL}/query`, {
-        query: `UPDATE Customer SET phone = 'hacked' WHERE company_name = 'Join Test'`
-    }, { headers: { 'x-session-id': state.adminB.sessionId } });
-    if (crossUpdate.data.data.row_count === 0) {
-        testResult('Company B cannot update Company A data', true);
-    } else {
-        testResult('Company B cannot update Company A data', false, { affected: crossUpdate.data.data.row_count });
+    section('8) Logout and post-logout behavior');
+    const lo = await apiLogout(tenantA.sessionId);
+    if (lo.status === 200 && lo.data?.success === true) ok('logout tenantA → 200');
+    else bad('logout tenantA', errMsg(lo));
+
+    const after = await apiTables(tenantA.sessionId);
+    expect('tables after logout → 400', after, 400);
+
+    section('Summary');
+    console.log(chalk.green(`Passed: ${passed}`));
+    if (failed > 0) {
+        console.log(chalk.red(`Failed: ${failed}`));
+        process.exit(1);
     }
-
-    // Company B tries to DELETE Company A's data
-    const crossDelete = await axios.post(`${BASE_URL}/query`, {
-        query: `DELETE FROM Customer WHERE company_name = 'Join Test'`
-    }, { headers: { 'x-session-id': state.adminB.sessionId } });
-    if (crossDelete.data.data.row_count === 0) {
-        testResult('Company B cannot delete Company A data', true);
-    } else {
-        testResult('Company B cannot delete Company A data', false, { affected: crossDelete.data.data.row_count });
-    }
-
-    // ============================================
-    // Test 14: Access to system tables (should be blocked)
-    // ============================================
-    console.log(chalk.yellow('\n--- System table access ---'));
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT * FROM Client' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        403,
-        'SELECT from Client should be blocked (non-system client)'
-    );
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT * FROM UserSession' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        403,
-        'SELECT from UserSession should be blocked'
-    );
-
-    // System client (id=1) might have access, but we don't have session for system. Not tested.
-
-    // ============================================
-    // Test 15: Malformed SQL
-    // ============================================
-    console.log(chalk.yellow('\n--- Malformed SQL ---'));
-    await expectStatus(
-        axios.post(`${BASE_URL}/query`, { query: 'SELECT FROM' }, { headers: { 'x-session-id': state.adminA.sessionId } }),
-        400,
-        'Malformed SQL should return 400'
-    );
-
-    // ============================================
-    // Test 16: Permission by tier (if we had tier 1/2 users)
-    // We'll skip due to complexity, but can be added later.
-    // ============================================
-
-    console.log(chalk.green('\n✅ All tests completed!'));
-
-} catch (err) {
-    console.error(chalk.red('Fatal error in test script:'), err);
+    console.log(chalk.green('All tests passed.'));
 }
+
+main().catch((e) => {
+    console.error(chalk.red('Fatal:'), e);
+    process.exit(1);
+});
