@@ -139,6 +139,7 @@ async function main() {
     expect('login with empty body → 400', await apiLogin(), 400);
     expect('login missing email → 400', await apiLogin(undefined, 'pass'), 400);
     expect('login missing password → 400', await apiLogin('test@test', undefined), 400);
+    expect('login with incorrect password → 400', await apiLogin('fake@test.com', 'wrong'), 400);
     expect('logout with no headers → 401', await http.post(`${API}/logout`), 401);
     expect('logout with invalid session format → 401', await apiLogout('invalid-session-string'), 401);
 
@@ -244,19 +245,51 @@ async function main() {
         bad('Tenant isolation update failure', `Status altered to: ${verifyA.data?.data?.rows[0]?.status}`);
     }
 
+    section('8.5) Metadata and Statics API Edge Cases');
+    const tableRes = await apiTables(tenantA.sessionId);
+    expect('GET /tables returns 200', tableRes, 200);
+    if (tableRes.data?.data?.tables) {
+        const hasCustomerTable = tableRes.data.data.tables.some(t => t.table_name === 'Customer');
+        if (hasCustomerTable) {
+            ok('GET /tables successfully formatted table metadata');
+        } else {
+            bad('GET /tables missing expected Customer table data');
+        }
+    } else {
+        bad('GET /tables data format invalid');
+    }
 
-    section('9) Billing and Editor Access Lockouts');
-    // We will artificially make Tenant C overdue by updating their Invoice via system trigger workaround or Direct SQL as Tenant C (Wait, Tenant C can't alter invoice freely due to WHERE conditions injected).
-    // Actually, we inject a raw query via a mock OR simulate an overdue state. 
-    // Since direct AST parser blocks DDL and system tables, we'll try to just call GET /pay for Tenant C to establish baseline.
+    const staticsRes = await apiStatics(tenantA.sessionId);
+    expect('GET /statics returns 200 for Tenant A', staticsRes, 200);
+    if (staticsRes.data?.data?.users?.total_users >= 1) {
+        ok('GET /statics structured correctly');
+    } else {
+        bad('GET /statics returned abnormal user count logic');
+    }
+
+    section('9) Billing Processing and Partial Payments');
     const payStateC = await apiPayGet(tenantC.sessionId);
     expect('Tenant C GET /pay check', payStateC, 200);
 
     // Let's test the Payment POST error cases
-    expect('POST /pay with missing amount → 402/500/etc', await apiPayPost(tenantC.sessionId, undefined), [402, 500, 400]);
-    // Pay valid amount (might fail with NO_ACTIVE_SUBSCRIPTION if not pending, but signup creates one)
+    expect('POST /pay with missing amount → 400/500/etc', await apiPayPost(tenantC.sessionId, undefined), [400, 402, 500]);
+    
+    // Partial payment check
+    const partialAmount = (payStateC.data?.plan_amount || 10) / 2;
+    const partialRes = await apiPayPost(tenantA.sessionId, partialAmount);
+    expect('POST /pay partial amount for Tenant A', partialRes, [200, 402]);
+
+    // Pay full/valid amount to handle transitions safely
     const payResC = await apiPayPost(tenantC.sessionId, payStateC.data?.plan_amount || 10.00);
     expect('POST /pay process valid payment (might be pending/overdue)', payResC, [200, 402]);
+
+    // Active User Check Edge Case
+    const u4 = `t4_${stamp}@t.com`, u4Pass = 'P4', u4User = `u4_${stamp}`;
+    await createUser(tenantA.sessionId, tenantA.clientId, 2, u4, u4User, u4Pass);
+    const u4Sess = parseLogin(await apiLogin(u4, u4Pass));
+    await apiQuery(tenantA.sessionId, `UPDATE User SET status='Inactive' WHERE user_id=${u4Sess.userId}`);
+    const inactLogin = await apiLogin(u4, u4Pass);
+    expect('Login with recently inactivated user → 401', inactLogin, 401);
 
     section('10) End of Lifecycle');
     // Logout everyone

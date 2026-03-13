@@ -2,7 +2,7 @@
 const pool = require('./db');
 const { ErrorCodes, createErrorResponse } = require('./error_handling');
 const overDuePricePerday = 0.002;
-const getPayment = async(req, res)=>{
+const getPayment = async (req, res) => {
     const sessionId = req.headers['x-session-id'];
     let connection;
 
@@ -82,6 +82,12 @@ const getPayment = async(req, res)=>{
             AND i.status ='Overdue' AND o.applied = False`,
             [clientId]
         );
+        if (planResult.length === 0) {
+            await connection.rollback();
+            return res.status(400).json(createErrorResponse(
+                ErrorCodes.INVALID_PLAN_ID
+            ));
+        }
         const daysSincePenalty = (overdueResult.length > 0) ? overdueResult[0].days : 0;
         const planPrice = parseFloat(planResult[0].monthly_price);
         const OverDueCharges = daysSincePenalty * (overDuePricePerday * planPrice);
@@ -124,7 +130,7 @@ const getPayment = async(req, res)=>{
 };
 const processPayment = async (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const {payment_amount} = req.body;
+    const { payment_amount } = req.body;
     let connection;
 
     try {
@@ -188,7 +194,7 @@ const processPayment = async (req, res) => {
         }
 
         // Set session variable for triggers
-        if(clientId !==1){
+        if (clientId !== 1) {
             await connection.query('SET @current_user_id = ?', [userId]);
         }
 
@@ -236,7 +242,7 @@ const processPayment = async (req, res) => {
         await connection.query(`
             Update Invoice SET status = 'Paid' Where invoice_id = ?
             `, [subscriptions[0].invoice_id]);
-        if(subscriptions[0].status === 'Overdue'){
+        if (subscriptions[0].status === 'Overdue') {
             await connection.query(`
                 Update OverduePenalty SET applied = True Where invoice_id = ?
                 `, [subscriptions[0].invoice_id]);
