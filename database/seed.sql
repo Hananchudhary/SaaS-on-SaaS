@@ -3,7 +3,7 @@ INSERT INTO Client (client_id, company_name, email, phone, address, status) VALU
 (1, 'SYSTEM', 'system@saasplatform.com', '+1-800-SYSTEM', 'System Records', 'Active');
 
 INSERT INTO User (user_id,client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(1,1, 'system.admin', 'admin@saasplatform.com', '$2a$10$SYSTEMHASHDONOTUSEINPRODUCTION', 3, 'Active', NULL);
+(1,1, 'system.admin', 'admin@saasplatform.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', NULL);
 
 INSERT INTO Plan (client_id, plan_name, tier_1_users, tier_2_users, tier_3_users, monthly_price, description) VALUES
 (1, 'Basic', 5, 2, 1, 49.99, 'Entry-level plan for small businesses'),
