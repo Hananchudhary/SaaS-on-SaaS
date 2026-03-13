@@ -78,27 +78,27 @@ const login = async (req, res) => {
             p.plan_id = s.plan_id WHERE s.client_id = ? AND 
             DATEDIFF(CURDATE() ,i.invoice_date) > 30 AND i.status = 'Paid' FOR UPDATE
             `, [user.client_id]);
-        
+
         let hasOverdue = null;
-        if(prev_inv.length > 0){
+        if (prev_inv.length > 0) {
             await connection.query(`
                 INSERT INTO Invoice(subscription_id, due_date, amount)
                 VALUES(?,DATE_ADD(CURDATE(), INTERVAL 2 DAY),?)
-                `,[prev_inv[0].subscription_id, prev_inv[0].monthly_price]);
+                `, [prev_inv[0].subscription_id, prev_inv[0].monthly_price]);
         }
-        else{
+        else {
             const [invoiceDue1] = await connection.query(`
                 SELECT i.invoice_id FROM Invoice i JOIN
                 Subscription s ON i.subscription_id = s.subscription_id
                 AND s.client_id = ? AND i.status = 'Pending' AND 
                 DATEDIFF(CURDATE(),i.due_date) > 0 FOR UPDATE
-                `,[user.client_id]);
-            if(invoiceDue1.length > 0){
+                `, [user.client_id]);
+            if (invoiceDue1.length > 0) {
                 await connection.query(`
                     UPDATE Invoice SET status = 'Overdue' Where invoice_id = ?
                     `, [invoiceDue1[0].invoice_id]);
             }
-            else{
+            else {
                 const [overdueResult] = await connection.query(
                     `SELECT 
                         COUNT(*) as overdue_count
@@ -113,14 +113,14 @@ const login = async (req, res) => {
                     [user.client_id]
                 );
                 hasOverdue = overdueResult[0].overdue_count > 0
-                
+
             }
         }
 
         // Determine if user can access editor
         const canAccessEditor = !hasOverdue
         await connection.query('SET @current_user_id = NULL');
-    
+
         // Insert session
         const [sessionResult] = await connection.query(
             `INSERT INTO UserSession (user_id, login_time, canAccessEditor)
@@ -164,7 +164,7 @@ const login = async (req, res) => {
                 ErrorCodes.USER_ALREADY_ACTIVE
             ));
         }
-        
+
         if (error.code === 'ER_NO_SUCH_TABLE') {
             return res.status(500).json(createErrorResponse(
                 ErrorCodes.LOGIN_FAILED
@@ -214,7 +214,7 @@ const logout = async (req, res) => {
             `SELECT *
              FROM UserSession
              WHERE session_id = ? 
-             FOR UPDATE`, 
+             FOR UPDATE`,
             [sessionId]
         );
 
@@ -281,31 +281,31 @@ const signup = async (req, res) => {
         email,
         phone,
         address,
-        
+
         // Selected plan ID for subscription
         plan_id,
-        
+
         // Custom plan 1 details
         plan_name1,
         tier1_users_plan1,
         tier2_users_plan1,
         tier3_users_plan1,
         price_plan1,
-        
+
         // Custom plan 2 details
         plan_name2,
         tier1_users_plan2,
         tier2_users_plan2,
         tier3_users_plan2,
         price_plan2,
-        
+
         // Custom plan 3 details
         plan_name3,
         tier1_users_plan3,
         tier2_users_plan3,
         tier3_users_plan3,
         price_plan3,
-        
+
         // Admin user details
         username,
         admin_email,
@@ -346,7 +346,7 @@ const signup = async (req, res) => {
                 ErrorCodes.INTERNAL_ERROR
             ));
         }
-        
+
         // await connection.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
         await connection.beginTransaction();
         await connection.query('SET @current_user_id = NULL');
@@ -376,7 +376,7 @@ const signup = async (req, res) => {
         }
 
         const [existingAdminEmail] = await connection.query(
-            `SELECT user_id FROM User WHERE email = ? FOR UPDATE` ,
+            `SELECT user_id FROM User WHERE email = ? FOR UPDATE`,
             [admin_email]
         );
 
@@ -407,7 +407,7 @@ const signup = async (req, res) => {
         ];
 
         const planIds = [];
-        
+
         for (let i = 0; i < planValues.length; i++) {
             const plan = planValues[i];
             const [planResult] = await connection.query(
@@ -422,13 +422,13 @@ const signup = async (req, res) => {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [newClientId, plan[0], plan[1], plan[2], plan[3], plan[4], null]
             );
-            
+
             planIds.push(planResult.insertId);
-            console.log(`[Signup] Plan ${i+1} inserted with ID: ${planResult.insertId}`);
+            console.log(`[Signup] Plan ${i + 1} inserted with ID: ${planResult.insertId}`);
         }
 
         const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-        
+
         const [userResult] = await connection.query(
             `INSERT INTO User (
                 client_id,
@@ -497,7 +497,7 @@ const signup = async (req, res) => {
             }
         }
 
-        if (error.code === '23514') { // PostgreSQL check violation
+        if (error.code === '23514' || error.code === 'ER_CHECK_CONSTRAINT_VIOLATED' || (error.message && error.message.includes('Check constraint'))) { // PostgreSQL or MySQL check violation
             // ERROR: CHECK_CONSTRAINT_VIOLATION (new error code needed)
             return res.status(400).json(createErrorResponse(
                 ErrorCodes.CHECK_CONSTRAINT_VIOLATION

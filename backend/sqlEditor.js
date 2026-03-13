@@ -71,11 +71,12 @@ const getTableNamesFromAST = (ast) => {
             (node.type === 'update' && node.table)
         ) {
             // normalize from clause to array
-            const fromItems = node.from
-                ? Array.isArray(node.from)
-                    ? node.from
-                    : [node.from]
-                : [];
+            let fromItems = [];
+            if (node.from) {
+                fromItems = Array.isArray(node.from) ? node.from : [node.from];
+            } else if (node.table) {
+                fromItems = Array.isArray(node.table) ? node.table : [node.table];
+            }
 
             fromItems.forEach(item => {
                 if (item?.table) {
@@ -411,13 +412,13 @@ const executeQuery = async (req, res) => {
             if (operation === 'SELECT') {
                 response.data.rows_count = results.length;
                 response.data.rows = results;  // actual rows returned
-            } 
+            }
             else if (operation === 'INSERT') {
                 response.data.insertId = results.insertId;
-            } 
+            }
             else if (operation === 'UPDATE' || operation === 'DELETE') {
                 response.data.affectedRows = results.affectedRows;
-            } 
+            }
             else {
                 response.data.message = 'Query executed';
             }
