@@ -1,290 +1,182 @@
 
-const pool = require('./db');
+const { pool, withTransaction } = require('./db');
 const { ErrorCodes, createErrorResponse } = require('./error_handling');
 const overDuePricePerday = 0.002;
-const getPayment = async(req, res)=>{
+const getPayment = async (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    let connection;
+
+    if (!sessionId) {
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.SESSION_NOT_FOUND
+        ));
+    }
 
     try {
-        if (!sessionId) {
-            return res.status(400).json(createErrorResponse(
-                ErrorCodes.SESSION_NOT_FOUND
-            ));
-        }
+        const responseData = await withTransaction(async (connection) => {
+            const [sessions] = await connection.query(
+                `SELECT 
+                    us.*,
+                    u.client_id,
+                    u.user_id,
+                    u.tier_level,
+                    u.status as user_status, 
+                    c.status as client_status
+                 FROM UserSession us
+                 JOIN User u ON us.user_id = u.user_id
+                 JOIN Client c ON c.client_id = u.client_id
+                 WHERE us.session_id = ? 
+                   AND us.logout_time IS NULL
+                 FOR UPDATE`,
+                [sessionId]
+            );
 
-        connection = await pool.getConnection();
-        if (!connection) {
-            return res.status(500).json(createErrorResponse(
-                ErrorCodes.INTERNAL_ERROR
-            ));
-        }
-        // await connection.query('SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED');
+            if (sessions.length === 0) throw { status: 400, code: ErrorCodes.SESSION_NOT_FOUND };
 
-        await connection.beginTransaction();
+            const session = sessions[0];
+            const clientId = session.client_id;
+            const userId = session.user_id;
 
-        const [sessions] = await connection.query(
-            `SELECT 
-                us.*,
-                u.client_id,
-                u.user_id,
-                u.tier_level,
-                u.status as user_status, 
-                c.status as client_status
-             FROM UserSession us
-             JOIN User u ON us.user_id = u.user_id
-             JOIN Client c ON c.client_id = u.client_id
-             WHERE us.session_id = ? 
-               AND us.logout_time IS NULL
-             FOR UPDATE`,
-            [sessionId]
-        );
+            if (session.user_status !== 'Active') throw { status: 401, code: ErrorCodes.USER_INACTIVE };
+            if (session.client_status !== 'Active') throw { status: 401, code: ErrorCodes.CLIENT_INACTIVE };
 
-        if (sessions.length === 0) {
-            await connection.rollback();
-            return res.status(400).json(createErrorResponse(
-                ErrorCodes.SESSION_NOT_FOUND
-            ));
-        }
+            await connection.query('SET @current_user_id = ?', [userId]);
 
-        const session = sessions[0];
-        const clientId = session.client_id;
-        const userId = session.user_id;
+            console.log(`[Pay] Processing payment for client_id: ${clientId}, user_id: ${userId}`);
 
-        // Check if user is active
-        if (session.user_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(
-                ErrorCodes.USER_INACTIVE
-            ));
-        }
+            const [planResult] = await connection.query(`
+                SELECT p.monthly_price FROM Plan p JOIN Subscription s ON
+                p.plan_id = s.plan_id WHERE s.client_id = ? AND s.status = 'Active'
+                `, [clientId]);
 
-        if (session.client_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(
-                ErrorCodes.CLIENT_INACTIVE
-            ));
-        }
+            if (planResult.length === 0) throw { status: 402, code: ErrorCodes.NO_ACTIVE_SUBSCRIPTION };
 
-        // Set session variable for triggers
-        await connection.query('SET @current_user_id = ?', [userId]);
+            const [overdueResult] = await connection.query(
+                `SELECT DATEDIFF(CURDATE(),o.penalty_date) as days FROM Invoice i 
+                JOIN Subscription s ON i.subscription_id = s.subscription_id JOIN 
+                OverduePenalty o ON o.invoice_id = i.invoice_id WHERE s.client_id = ? 
+                AND i.status ='Overdue' AND o.applied = False`,
+                [clientId]
+            );
 
-        console.log(`[Pay] Processing payment for client_id: ${clientId}, user_id: ${userId}`);
+            const daysSincePenalty = (overdueResult.length > 0) ? overdueResult[0].days : 0;
+            const planPrice = parseFloat(planResult[0].monthly_price);
+            const OverDueCharges = daysSincePenalty * (overDuePricePerday * planPrice);
 
-        const [planResult] = await connection.query(`
-            SELECT p.monthly_price FROM Plan p JOIN Subscription s ON
-            p.plan_id = s.plan_id WHERE s.client_id = ? AND s.status = 'Active'
-            `, [clientId]);
-        const [overdueResult] = await connection.query(
-            `SELECT DATEDIFF(CURDATE(),o.penalty_date) as days FROM Invoice i 
-            JOIN Subscription s ON i.subscription_id = s.subscription_id JOIN 
-            OverduePenalty o ON o.invoice_id = i.invoice_id WHERE s.client_id = ? 
-            AND i.status ='Overdue' AND o.applied = False`,
-            [clientId]
-        );
-        const daysSincePenalty = (overdueResult.length > 0) ? overdueResult[0].days : 0;
-        const planPrice = parseFloat(planResult[0].monthly_price);
-        const OverDueCharges = daysSincePenalty * (overDuePricePerday * planPrice);
-        await connection.commit();
-
-        const responseData = {
-            success: true,
-            plan_amount: planPrice,
-            overdue_fine: OverDueCharges
-        };
+            return {
+                success: true,
+                plan_amount: planPrice,
+                overdue_fine: OverDueCharges
+            };
+        }, { isolationLevel: 'READ COMMITTED' });
 
         return res.status(200).json(responseData);
 
     } catch (error) {
-        if (connection) {
-            try {
-                await connection.rollback();
-                console.log('[Pay] Transaction rolled back due to error');
-            } catch (rollbackError) {
-                console.error('[Pay] Rollback failed:', rollbackError);
-            }
+        if (error.status) {
+            return res.status(error.status).json(createErrorResponse(error.code));
         }
-
-        console.error('[Pay] Error:', {
-            message: error.message,
-            stack: error.stack,
-            sessionId: sessionId
-        });
-
-
-        return res.status(500).json(createErrorResponse(
-            ErrorCodes.UNKNOWN_ERROR
-        ));
-
-    } finally {
-        if (connection) {
-            connection.release();
-        }
+        console.error('[Pay] Error:', error);
+        return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
     }
 };
 const processPayment = async (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const {payment_amount} = req.body;
-    let connection;
+    const { payment_amount } = req.body;
+
+    if (!sessionId) {
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.SESSION_NOT_FOUND
+        ));
+    }
 
     try {
-        if (!sessionId) {
-            return res.status(400).json(createErrorResponse(
-                ErrorCodes.SESSION_NOT_FOUND
-            ));
-        }
+        await withTransaction(async (connection) => {
+            const [sessions] = await connection.query(
+                `SELECT 
+                    us.*,
+                    u.client_id,
+                    u.user_id,
+                    u.tier_level,
+                    u.status as user_status, 
+                    c.status as client_status
+                 FROM UserSession us
+                 JOIN User u ON us.user_id = u.user_id
+                 JOIN Client c ON c.client_id = u.client_id
+                 WHERE us.session_id = ? 
+                   AND us.logout_time IS NULL
+                 FOR UPDATE`,
+                [sessionId]
+            );
 
-        connection = await pool.getConnection();
-        if (!connection) {
-            return res.status(500).json(createErrorResponse(
-                ErrorCodes.INTERNAL_ERROR
-            ));
-        }
+            if (sessions.length === 0) throw { status: 400, code: ErrorCodes.SESSION_NOT_FOUND };
 
-        // await connection.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
-        await connection.beginTransaction();
+            const session = sessions[0];
+            const clientId = session.client_id;
+            const userId = session.user_id;
 
-        const [sessions] = await connection.query(
-            `SELECT 
-                us.*,
-                u.client_id,
-                u.user_id,
-                u.tier_level,
-                u.status as user_status, 
-                c.status as client_status
-             FROM UserSession us
-             JOIN User u ON us.user_id = u.user_id
-             JOIN Client c ON c.client_id = u.client_id
-             WHERE us.session_id = ? 
-               AND us.logout_time IS NULL
-             FOR UPDATE`,
-            [sessionId]
-        );
+            if (session.user_status !== 'Active') throw { status: 401, code: ErrorCodes.USER_INACTIVE };
+            if (session.client_status !== 'Active') throw { status: 401, code: ErrorCodes.CLIENT_INACTIVE };
 
-        if (sessions.length === 0) {
-            await connection.rollback();
-            return res.status(400).json(createErrorResponse(
-                ErrorCodes.SESSION_NOT_FOUND
-            ));
-        }
+            if (clientId !== 1) {
+                await connection.query('SET @current_user_id = ?', [userId]);
+            }
 
-        const session = sessions[0];
-        const clientId = session.client_id;
-        const userId = session.user_id;
+            const [subscriptions] = await connection.query(
+                `SELECT 
+                    i.status,
+                    i.invoice_id
+                 FROM Subscription s JOIN Invoice i ON
+                 i.subscription_id = s.subscription_id 
+                 JOIN Plan p ON s.plan_id = p.plan_id
+                 WHERE s.client_id = ? AND i.status IN('Pending', 'Overdue')
+                   AND s.status = 'Active' ORDER BY i.invoice_date DESC
+                 LIMIT 1 
+                 FOR UPDATE`,
+                [clientId]
+            );
 
-        // Check if user is active
-        if (session.user_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(
-                ErrorCodes.USER_INACTIVE
-            ));
-        }
+            if (subscriptions.length === 0) throw { status: 402, code: ErrorCodes.NO_ACTIVE_SUBSCRIPTION };
 
-        if (session.client_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(
-                ErrorCodes.CLIENT_INACTIVE
-            ));
-        }
+            const [paymentResult] = await connection.query(
+                `INSERT INTO Payment (
+                    invoice_id,
+                    payment_date,
+                    amount,
+                    payment_method,
+                    status,
+                    created_at
+                ) VALUES (?, NOW(), ?, 'Bank Transfer', 'Success', NOW())`,
+                [subscriptions[0].invoice_id, payment_amount]
+            );
 
-        // Set session variable for triggers
-        if(clientId !==1){
-            await connection.query('SET @current_user_id = ?', [userId]);
-        }
+            if (!paymentResult || !paymentResult.insertId) throw { status: 402, code: ErrorCodes.PAYMENT_PROCESSING_FAILED };
 
-        console.log(`[Pay] Processing payment for client_id: ${clientId}, user_id: ${userId}`);
-
-        const [subscriptions] = await connection.query(
-            `SELECT 
-                i.status,
-                i.invoice_id
-             FROM Subscription s JOIN Invoice i ON
-             i.subscription_id = s.subscription_id 
-             JOIN Plan p ON s.plan_id = p.plan_id
-             WHERE s.client_id = ? AND i.status IN('Pending', 'Overdue')
-               AND s.status = 'Active' ORDER BY i.invoice_date DESC
-             LIMIT 1 
-             FOR UPDATE`, // Lock the subscription row
-            [clientId]
-        );
-
-        if (subscriptions.length === 0) {
-            await connection.rollback();
-            return res.status(402).json(createErrorResponse(
-                ErrorCodes.NO_ACTIVE_SUBSCRIPTION
-            ));
-        }
-
-        const [paymentResult] = await connection.query(
-            `INSERT INTO Payment (
-                invoice_id,
-                payment_date,
-                amount,
-                payment_method,
-                status,
-                created_at
-            ) VALUES (?, NOW(), ?, 'Bank Transfer', 'Success', NOW())`,
-            [subscriptions[0].invoice_id, payment_amount]
-        );
-
-        if (!paymentResult || !paymentResult.insertId) {
-            await connection.rollback();
-            return res.status(402).json(createErrorResponse(
-                ErrorCodes.PAYMENT_PROCESSING_FAILED
-            ));
-        }
-        await connection.query(`
-            Update Invoice SET status = 'Paid' Where invoice_id = ?
-            `, [subscriptions[0].invoice_id]);
-        if(subscriptions[0].status === 'Overdue'){
             await connection.query(`
-                Update OverduePenalty SET applied = True Where invoice_id = ?
+                Update Invoice SET status = 'Paid' Where invoice_id = ?
                 `, [subscriptions[0].invoice_id]);
-        }
+                
+            if (subscriptions[0].status === 'Overdue') {
+                await connection.query(`
+                    Update OverduePenalty SET applied = True Where invoice_id = ?
+                    `, [subscriptions[0].invoice_id]);
+            }
 
-        const newPaymentId = paymentResult.insertId;
-        console.log(`[Pay] Payment processed with ID: ${newPaymentId}`);
+            await connection.query(
+                `UPDATE UserSession 
+                 SET canAccessEditor = TRUE 
+                 WHERE session_id = ?`,
+                [sessionId]
+            );
+        }, { isolationLevel: 'SERIALIZABLE' });
 
-        await connection.query(
-            `UPDATE UserSession 
-             SET canAccessEditor = TRUE 
-             WHERE session_id = ?`,
-            [sessionId]
-        );
-
-        await connection.commit();
-
-        const responseData = {
-            success: true
-        };
-
-        return res.status(200).json(responseData);
+        return res.status(200).json({ success: true });
 
     } catch (error) {
-        if (connection) {
-            try {
-                await connection.rollback();
-                console.log('[Pay] Transaction rolled back due to error');
-            } catch (rollbackError) {
-                console.error('[Pay] Rollback failed:', rollbackError);
-            }
+        if (error.status) {
+            return res.status(error.status).json(createErrorResponse(error.code));
         }
-
-        console.error('[Pay] Error:', {
-            message: error.message,
-            stack: error.stack,
-            sessionId: sessionId
-        });
-
-
-        return res.status(500).json(createErrorResponse(
-            ErrorCodes.UNKNOWN_ERROR
-        ));
-
-    } finally {
-        if (connection) {
-            connection.release();
-        }
+        console.error('[Pay] Error:', error);
+        return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
     }
 };
 

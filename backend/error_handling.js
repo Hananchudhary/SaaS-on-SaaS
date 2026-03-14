@@ -43,7 +43,7 @@ const ErrorCodes = {
         message: 'Logout failed due to server error'
     },
 
-    UNKNOW_ERROR:{
+    UNKNOWN_ERROR:{
         code: 900,
         message: 'An unknown error occured'
     },

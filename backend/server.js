@@ -36,7 +36,7 @@ const limiter = rateLimit({
         }
     }
 });
-app.use('/api/', limiter);
+// app.use('/api/', limiter);
 
 app.get('/health', (req, res) => {
     res.json({ success: true, message: 'Server is running', timestamp: new Date().toISOString() });

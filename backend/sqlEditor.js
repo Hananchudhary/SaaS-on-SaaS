@@ -1,5 +1,5 @@
 // controllers/queryController.js
-const pool = require('./db');
+const { pool, withTransaction } = require('./db');
 const { ErrorCodes, createErrorResponse } = require('./error_handling');
 const sqlParser = require('node-sql-parser');
 
@@ -70,12 +70,13 @@ const getTableNamesFromAST = (ast) => {
             (node.type === 'delete' && node.from) ||
             (node.type === 'update' && node.table)
         ) {
-            // normalize from clause to array
-            const fromItems = node.from
-                ? Array.isArray(node.from)
-                    ? node.from
-                    : [node.from]
-                : [];
+            // normalize from or table clause to array
+            let fromItems = [];
+            if (node.from) {
+                fromItems = Array.isArray(node.from) ? node.from : [node.from];
+            } else if (node.table) {
+                fromItems = Array.isArray(node.table) ? node.table : [node.table];
+            }
 
             fromItems.forEach(item => {
                 if (item?.table) {
@@ -273,191 +274,126 @@ const checkTierPermission = (tierLevel, operation) => {
 const executeQuery = async (req, res) => {
     const sessionId = req.headers['x-session-id'];
     const { query } = req.body;
-    let connection;
+
+    if (!sessionId) {
+        return res.status(401).json(createErrorResponse(ErrorCodes.SESSION_NOT_FOUND));
+    }
+    if (!query) {
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.INVALID_QUERY,
+            'Query string is required'
+        ));
+    }
 
     try {
-        // Validate input
-        if (!sessionId) {
-            return res.status(401).json(createErrorResponse(ErrorCodes.SESSION_NOT_FOUND));
-        }
-        if (!query || typeof query !== 'string') {
-            return res.status(400).json(createErrorResponse(ErrorCodes.INVALID_QUERY));
-        }
-
-        connection = await pool.getConnection();
-        if (!connection) {
-            return res.status(500).json(createErrorResponse(ErrorCodes.INTERNAL_ERROR));
-        }
-
-        // Set transaction isolation and begin
-        // await connection.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
-        await connection.beginTransaction();
-
-        // Verify session and get user/client details with row lock
-        const [sessions] = await connection.query(
-            `SELECT 
-                us.*,
-                u.client_id,
-                u.user_id,
-                u.tier_level,
-                u.status as user_status,
-                c.status as client_status
-             FROM UserSession us
-             JOIN User u ON us.user_id = u.user_id
-             JOIN Client c ON u.client_id = c.client_id
-             WHERE us.session_id = ? 
-               AND us.logout_time IS NULL 
-             FOR UPDATE`,
-            [sessionId]
-        );
-
-        if (sessions.length === 0) {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(ErrorCodes.SESSION_NOT_FOUND));
-        }
-
-        const session = sessions[0];
-        const clientId = session.client_id;
-        const userId = session.user_id;
-        const tierLevel = session.tier_level;
-
-        // Check account status
-        if (session.user_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(ErrorCodes.USER_INACTIVE));
-        }
-        if (session.client_status !== 'Active') {
-            await connection.rollback();
-            return res.status(401).json(createErrorResponse(ErrorCodes.CLIENT_INACTIVE));
-        }
-        if (!session.canAccessEditor) {
-            await connection.rollback();
-            return res.status(403).json(createErrorResponse(ErrorCodes.EDITOR_ACCESS_DISABLED));
-        }
-
-        // Set session variable for triggers
-        await connection.query('SET @current_user_id = ?', [userId]);
-
-        // Parse and validate SQL
-        const validation = validateQueryStructure(query);
-        if (!validation.valid) {
-            await connection.rollback();
-            return res.status(400).json(createErrorResponse(ErrorCodes.INVALID_QUERY));
-        }
-        const ast = validation.ast;
-
-        // Check for disallowed DDL
-        if (containsDisallowedDDL(ast)) {
-            await connection.rollback();
-            return res.status(403).json(createErrorResponse(ErrorCodes.CREATE_ALTER_DROP_NOT_ALLOWED));
-        }
-
-        // Determine operation type
-        const parsed = parseQuery(query);
-        if (!parsed.type) {
-            await connection.rollback();
-            return res.status(400).json(createErrorResponse(ErrorCodes.INVALID_QUERY));
-        }
-        const operation = parsed.type;
-
-        // Extract all tables from AST
-        const tables = getTableNamesFromAST(ast);
-
-        // Block access to system tables for non‑system clients
-        if (clientId !== 1) {
-            const blocked = tables.some(t => {
-                const name = t && typeof t.name === 'string' ? t.name.toLowerCase() : '';
-                return name === 'client' || name === 'usersession';
-            });
-            if (blocked) {
-                await connection.rollback();
-                return res.status(403).json(createErrorResponse(ErrorCodes.CROSS_TENANT_ACCESS_DENIED));
-            }
-        }
-
-        console.log(`[Query] Operation: ${operation}, Tables:`, tables);
-
-        // RBAC check
-        if (!checkTierPermission(tierLevel, operation)) {
-            await connection.rollback();
-            if (tierLevel === 3) {
-                return res.status(403).json(createErrorResponse(ErrorCodes.TIER3_OPERATION_DENIED));
-            } else if (tierLevel === 2) {
-                return res.status(403).json(createErrorResponse(ErrorCodes.TIER2_OPERATION_DENIED));
-            } else {
-                return res.status(403).json(createErrorResponse(ErrorCodes.QUERY_NOT_ALLOWED));
-            }
-        }
-
-        // Apply tenant isolation
-        const finalQuery = enforceTenantIsolation(query, clientId, tables);
-        console.log(`[Query] Modified query: ${finalQuery}`);
-
-        // Execute the query
-        try {
-            const [results] = await connection.query(finalQuery);
-
-            // Log success
-            const tableNames = tables.map(t => t.name).join(',');
-            await connection.query(
-                `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
-                 VALUES (?, ?, ?, NOW(), 'Success')`,
-                [userId, operation, tableNames]
+        const responseData = await withTransaction(async (connection) => {
+            // Verify session and get user/client details with row lock
+            const [sessions] = await connection.query(
+                `SELECT 
+                    us.*,
+                    u.client_id,
+                    u.user_id,
+                    u.tier_level,
+                    u.status as user_status,
+                    c.status as client_status
+                 FROM UserSession us
+                 JOIN User u ON us.user_id = u.user_id
+                 JOIN Client c ON u.client_id = c.client_id
+                 WHERE us.session_id = ? 
+                   AND us.logout_time IS NULL 
+                 FOR UPDATE`,
+                [sessionId]
             );
 
-            await connection.commit();
-            const response = { success: true, data: {} };
+            if (sessions.length === 0) throw { status: 401, code: ErrorCodes.SESSION_NOT_FOUND };
 
-            if (operation === 'SELECT') {
-                response.data.rows_count = results.length;
-                response.data.rows = results;  // actual rows returned
-            } 
-            else if (operation === 'INSERT') {
-                response.data.insertId = results.insertId;
-            } 
-            else if (operation === 'UPDATE' || operation === 'DELETE') {
-                response.data.affectedRows = results.affectedRows;
-            } 
-            else {
-                response.data.message = 'Query executed';
+            const session = sessions[0];
+            const clientId = session.client_id;
+            const userId = session.user_id;
+            const tierLevel = session.tier_level;
+
+            if (session.user_status !== 'Active') throw { status: 401, code: ErrorCodes.USER_INACTIVE };
+            if (session.client_status !== 'Active') throw { status: 401, code: ErrorCodes.CLIENT_INACTIVE };
+            if (!session.canAccessEditor) throw { status: 403, code: ErrorCodes.EDITOR_ACCESS_DISABLED };
+
+            await connection.query('SET @current_user_id = ?', [userId]);
+
+            const validation = validateQueryStructure(query);
+            if (!validation.valid) throw { status: 400, code: ErrorCodes.INVALID_QUERY };
+            const ast = validation.ast;
+
+            if (containsDisallowedDDL(ast)) throw { status: 403, code: ErrorCodes.CREATE_ALTER_DROP_NOT_ALLOWED };
+
+            const parsed = parseQuery(query);
+            if (!parsed.type) throw { status: 400, code: ErrorCodes.INVALID_QUERY };
+            const operation = parsed.type;
+
+            const tables = getTableNamesFromAST(ast);
+
+            if (clientId !== 1) {
+                const blocked = tables.some(t => {
+                    const name = t && typeof t.name === 'string' ? t.name.toLowerCase() : '';
+                    return name === 'client' || name === 'usersession';
+                });
+                if (blocked) throw { status: 403, code: ErrorCodes.CROSS_TENANT_ACCESS_DENIED };
             }
-            return res.status(200).json(response);
-        } catch (queryError) {
-            console.error('[Query] Execution error:', queryError);
 
-            await connection.rollback();
+            if (!checkTierPermission(tierLevel, operation)) {
+                if (tierLevel === 3) throw { status: 403, code: ErrorCodes.TIER3_OPERATION_DENIED };
+                if (tierLevel === 2) throw { status: 403, code: ErrorCodes.TIER2_OPERATION_DENIED };
+                throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
+            }
+            console.log(`query: ${query}`);
+            const finalQuery = enforceTenantIsolation(query, clientId, tables);
+            console.log(`finalQuery: ${finalQuery}`);
+            try {
+                const [results] = await connection.query(finalQuery);
 
-            // Log failure
-            const tableNames = tables.map(t => t.name).join(',');
-            await connection.query(
-                `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
-                 VALUES (?, ?, ?, NOW(), 'Failure')`,
-                [userId, operation, tableNames]
-            );
+                const tableNames = tables.map(t => t.name).join(',');
+                await connection.query(
+                    `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
+                     VALUES (?, ?, ?, NOW(), 'Success')`,
+                    [userId, operation, tableNames]
+                );
 
-            return res.status(400).json(createErrorResponse(
-                ErrorCodes.QUERY_EXECUTION_FAILED,
-                queryError.message
-            ));
-        }
+                const responseData = { success: true, data: {} };
+                if (operation.toUpperCase() === 'SELECT') {
+                    responseData.data.rows_count = results.length;
+                    responseData.data.rows = results;
+                } else if (operation.toUpperCase() === 'INSERT') {
+                    responseData.data.insertId = results.insertId;
+                } else if (operation.toUpperCase() === 'UPDATE' || operation.toUpperCase() === 'DELETE') {
+                    responseData.data.affectedRows = results.affectedRows;
+                } else {
+                    responseData.data.message = 'Query executed';
+                }
+                return responseData;
+            } catch (queryError) {
+                const tableNames = tables.map(t => t.name).join(',');
+                try {
+                    await connection.query(
+                        `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
+                         VALUES (?, ?, ?, NOW(), 'Failure')`,
+                        [userId, operation, tableNames]
+                    );
+                } catch (logError) {
+                    console.error('Failed to log failed query:', logError);
+                }
+                throw { 
+                    status: 400, 
+                    code: ErrorCodes.QUERY_EXECUTION_FAILED, 
+                    message: queryError.message 
+                };
+            }
+        }, { isolationLevel: 'REPEATABLE READ' });
+
+        return res.status(200).json(responseData);
     } catch (error) {
-        if (connection) {
-            try { await connection.rollback(); } catch (rollbackError) {
-                console.error('[Query] Rollback failed:', rollbackError);
-            }
+        if (error.status) {
+            return res.status(error.status).json(createErrorResponse(error.code, error.message));
         }
-
-        console.error('[Query] System error:', {
-            message: error.message,
-            stack: error.stack,
-            sessionId
-        });
-
+        console.error('[Query] System error:', error);
         return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
-    } finally {
-        if (connection) {
-            connection.release();
-        }
     }
 };
 
