@@ -6,7 +6,7 @@ const ErrorCodes = {
         code: 400,
         message: 'Email and password are required'
     },
-    
+
     // Authentication Errors (401)
     INVALID_CREDENTIALS: {
         code: 401,
@@ -24,7 +24,7 @@ const ErrorCodes = {
         code: 404,
         message: 'User is already log in somewhere'
     },
-    
+
     LOGIN_FAILED: {
         code: 501,
         message: 'Login failed due to server error'
@@ -47,7 +47,7 @@ const ErrorCodes = {
         code: 900,
         message: 'An unknown error occured'
     },
-    INTERNAL_ERROR:{
+    INTERNAL_ERROR: {
         code: 800,
         message: 'An internal error occured. Please try again later'
     },
@@ -140,11 +140,11 @@ const createErrorResponse = (errorCode, details = null) => {
             message: errorCode.message
         }
     };
-    
+
     if (details) {
         response.error.details = details;
     }
-    
+
     return response;
 };
 
