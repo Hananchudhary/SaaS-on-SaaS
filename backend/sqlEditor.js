@@ -11,7 +11,7 @@ const DISALLOWED_STATEMENT_TYPES = [
     'lock', 'unlock', 'grant', 'revoke',
     'commit', 'rollback', 'savepoint',
     'prepare', 'execute', 'deallocate',
-    'set', 'show', 'describe', 'explain',  // show/desc/explain are allowed but handled separately
+    'set'
 ];
 
 // Allowed DML operations per tier (tier1: read-only, tier2: update, tier3: full)
@@ -245,7 +245,7 @@ const parseQuery = (sql) => {
             else if (ast.type === 'update') type = 'UPDATE';
             else if (ast.type === 'delete') type = 'DELETE';
             else if (ast.type === 'show') type = 'SHOW';
-            else if (ast.type === 'desc') type = 'DESCRIBE';
+            else if (ast.type === 'desc' || ast.type === 'describe') type = 'DESCRIBE';
             else type = ast.type.toUpperCase();
         }
         return { success: true, ast, type };

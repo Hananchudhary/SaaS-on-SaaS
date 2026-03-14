@@ -188,7 +188,7 @@ CREATE TABLE OverduePenalty (
 CREATE TABLE AccessLog (
     log_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    action ENUM('INSERT', 'UPDATE', 'DELETE', 'SELECT') NOT NULL,
+    action ENUM('INSERT', 'UPDATE', 'DELETE', 'SELECT', 'SHOW', 'DESCRIBE') NOT NULL,
     table_name VARCHAR(100) NOT NULL,
     timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status ENUM('Success', 'Failure') NOT NULL,
@@ -196,7 +196,7 @@ CREATE TABLE AccessLog (
     CONSTRAINT fk_accesslog_user FOREIGN KEY (user_id) 
         REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT chk_action CHECK (
-        action IN ('INSERT', 'UPDATE', 'DELETE', 'SELECT')
+        action IN ('INSERT', 'UPDATE', 'DELETE', 'SELECT', 'SHOW', 'DESCRIBE')
     ),
     CONSTRAINT chk_log_status CHECK (
         status IN ('Success', 'Failure')
