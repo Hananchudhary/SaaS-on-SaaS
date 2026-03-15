@@ -1,3 +1,0 @@
-[dotenv@17.3.1] injecting env (7) from config.env -- tip: ⚙️  enable debug logging with { debug: true }
-[dotenv@17.3.1] injecting env (0) from config.env -- tip: ⚙️  override existing env vars with { override: true }
-Server running on port 3000
