@@ -3,7 +3,6 @@ require('dotenv').config({ path: './config.env' });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
 const { ErrorCodes, createErrorResponse } = require('./error_handling');
 
@@ -22,21 +21,6 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Rate limiting (optional but recommended)
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: {
-        success: false,
-        error: {
-            code: 429,
-            message: 'Too many requests, please try again later.',
-            timestamp: new Date().toISOString()
-        }
-    }
-});
-// app.use('/api/', limiter);
 
 app.get('/health', (req, res) => {
     res.json({ success: true, message: 'Server is running', timestamp: new Date().toISOString() });

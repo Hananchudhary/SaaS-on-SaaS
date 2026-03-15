@@ -150,16 +150,7 @@ const processPayment = async (req, res) => {
             );
 
             if (!paymentResult || !paymentResult.insertId) throw { status: 402, code: ErrorCodes.PAYMENT_PROCESSING_FAILED };
-
-            await connection.query(`
-                Update Invoice SET status = 'Paid' Where invoice_id = ?
-                `, [subscriptions[0].invoice_id]);
-                
-            if (subscriptions[0].status === 'Overdue') {
-                await connection.query(`
-                    Update OverduePenalty SET applied = True Where invoice_id = ?
-                    `, [subscriptions[0].invoice_id]);
-            }
+             
 
             await connection.query(
                 `UPDATE UserSession 

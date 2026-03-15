@@ -294,34 +294,24 @@ CREATE TRIGGER update_invoice_on_payment
 AFTER INSERT ON Payment
 FOR EACH ROW
 BEGIN
-    DECLARE total_paid DECIMAL(12,2);
-    DECLARE invoice_amount DECIMAL(12,2);
-    DECLARE new_status VARCHAR(20);
     
     IF NEW.status = 'Success' THEN
-        SELECT SUM(amount) INTO total_paid
-        FROM Payment
-        WHERE invoice_id = NEW.invoice_id AND status = 'Success';
-        
-        SELECT amount INTO invoice_amount
-        FROM Invoice
-        WHERE invoice_id = NEW.invoice_id;
-        
-        IF total_paid >= invoice_amount THEN
-            SET new_status = 'Paid';
-        ELSEIF total_paid > 0 THEN
-            SET new_status = 'Partial';
-        ELSE
-            SET new_status = 'Pending';
-        END IF;
         
         UPDATE Invoice
-        SET paid_amount = total_paid,
-            status = new_status,
-            paid_date = CASE 
-                WHEN total_paid >= amount THEN NEW.payment_date
-                ELSE NULL
-            END
+        SET paid_amount = NEW.amount,
+            status = 'Paid',
+            paid_date = NEW.payment_date
+        WHERE invoice_id = NEW.invoice_id;
+    END IF;
+END$$
+
+CREATE TRIGGER update_overdue_on_payment
+AFTER UPDATE ON Invoice
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'Paid' THEN
+        UPDATE OverduePenalty
+        SET applied = True
         WHERE invoice_id = NEW.invoice_id;
     END IF;
 END$$
