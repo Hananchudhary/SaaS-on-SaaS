@@ -1,0 +1,445 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SaaS-on-SaaS Backend API",
+    "version": "1.0.0",
+    "description": "OpenAPI spec for the SaaS-on-SaaS backend."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "timestamp": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["success", "message", "timestamp"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/signup": {
+      "post": {
+        "summary": "Create a new client and admin user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SignupRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signup successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "Conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/login": {
+      "post": {
+        "summary": "Login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid credentials or validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/logout": {
+      "post": {
+        "summary": "Logout",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "responses": {
+          "200": {
+            "description": "Logout successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          },
+          "401": { "description": "Session not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/query": {
+      "post": {
+        "summary": "Execute a SQL query",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/QueryRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query executed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QueryResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid query or execution failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/tables": {
+      "get": {
+        "summary": "List tables and tenant-scoped data",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "responses": {
+          "200": {
+            "description": "Tables metadata",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TablesResponse" }
+              }
+            }
+          },
+          "400": { "description": "Session not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/statics": {
+      "get": {
+        "summary": "Get tenant statistics",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "responses": {
+          "200": {
+            "description": "Statistics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StaticsResponse" }
+              }
+            }
+          },
+          "400": { "description": "Session not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/pay": {
+      "get": {
+        "summary": "Get payment amount and overdue fine",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "responses": {
+          "200": {
+            "description": "Payment information",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GetPaymentResponse" }
+              }
+            }
+          },
+          "400": { "description": "Session not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "No active subscription", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "summary": "Process a payment",
+        "parameters": [ { "$ref": "#/components/parameters/SessionHeader" } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProcessPaymentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment processed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          },
+          "400": { "description": "Session not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "402": { "description": "Payment failure", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "SessionHeader": {
+        "name": "x-session-id",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Session ID returned by /api/v1/login"
+      }
+    },
+    "schemas": {
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": true }
+        },
+        "required": ["success"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "integer" },
+              "message": { "type": "string" },
+              "details": { "type": "string" }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["success", "error"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["email", "password"]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "session_id": { "type": "integer" },
+              "username": { "type": "string" },
+              "tier_level": { "type": "integer" },
+              "client_id": { "type": "integer" },
+              "user_id": { "type": "integer" },
+              "warning": { "type": "string" }
+            },
+            "required": ["session_id", "username", "tier_level", "client_id", "user_id"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "SignupRequest": {
+        "type": "object",
+        "properties": {
+          "company_name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "address": { "type": "string" },
+          "plan_id": { "type": "integer" },
+          "plan_name1": { "type": "string" },
+          "tier1_users_plan1": { "type": "integer" },
+          "tier2_users_plan1": { "type": "integer" },
+          "tier3_users_plan1": { "type": "integer" },
+          "price_plan1": { "type": "number" },
+          "plan_name2": { "type": "string" },
+          "tier1_users_plan2": { "type": "integer" },
+          "tier2_users_plan2": { "type": "integer" },
+          "tier3_users_plan2": { "type": "integer" },
+          "price_plan2": { "type": "number" },
+          "plan_name3": { "type": "string" },
+          "tier1_users_plan3": { "type": "integer" },
+          "tier2_users_plan3": { "type": "integer" },
+          "tier3_users_plan3": { "type": "integer" },
+          "price_plan3": { "type": "number" },
+          "username": { "type": "string" },
+          "admin_email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": [
+          "company_name",
+          "email",
+          "plan_id",
+          "plan_name1",
+          "tier1_users_plan1",
+          "tier2_users_plan1",
+          "tier3_users_plan1",
+          "price_plan1",
+          "plan_name2",
+          "tier1_users_plan2",
+          "tier2_users_plan2",
+          "tier3_users_plan2",
+          "price_plan2",
+          "plan_name3",
+          "tier1_users_plan3",
+          "tier2_users_plan3",
+          "tier3_users_plan3",
+          "price_plan3",
+          "username",
+          "admin_email",
+          "password"
+        ]
+      },
+      "QueryRequest": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      },
+      "QueryResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "rows_count": { "type": "integer" },
+                  "rows": { "type": "array", "items": { "type": "object" } }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "insertId": { "type": "integer" }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "affectedRows": { "type": "integer" }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "message": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "TablesResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "table_name": { "type": "string" },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "data_type": { "type": "string" },
+                          "nullable": { "type": "boolean" },
+                          "is_primary": { "type": "boolean" }
+                        }
+                      }
+                    },
+                    "row_count": { "type": "integer" },
+                    "data": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "StaticsResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "active_sessions": { "type": "integer" },
+              "users": { "type": "object" },
+              "plans": { "type": "object" },
+              "storage": { "type": "number" }
+            }
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "GetPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "plan_amount": { "type": "number" },
+          "overdue_fine": { "type": "number" }
+        },
+        "required": ["success", "plan_amount", "overdue_fine"]
+      },
+      "ProcessPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "payment_amount": { "type": "number" }
+        },
+        "required": ["payment_amount"]
+      }
+    }
+  }
+}

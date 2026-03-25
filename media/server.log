@@ -1,0 +1,23 @@
+[dotenv@17.3.1] injecting env (7) from config.env -- tip: ⚙️  enable debug logging with { debug: true }
+[dotenv@17.3.1] injecting env (0) from config.env -- tip: ⚙️  override existing env vars with { override: true }
+Server running on port 3000
+2026-03-15T09:41:12.184Z INFO  tx.begin id=txn-7f2e isolation=REPEATABLE_READ route=POST /api/v1/query session=128
+2026-03-15T09:41:12.246Z ERROR tx.error id=txn-7f2e code=CREATE_ALTER_DROP_NOT_ALLOWED message="DDL statements are not permitted"
+2026-03-15T09:41:12.246Z INFO  tx.rollback id=txn-7f2e reason=validation_error
+2026-03-15T09:41:12.247Z INFO  response status=403 route=POST /api/v1/query
+2026-03-15T09:43:03.019Z INFO  tx.begin id=txn-9c11 isolation=REPEATABLE_READ route=POST /api/v1/query session=129
+2026-03-15T09:43:03.121Z ERROR tx.error id=txn-9c11 code=QUERY_EXECUTION_FAILED message="ER_NO_REFERENCED_ROW_2: Cannot add or update a child row"
+2026-03-15T09:43:03.121Z INFO  tx.rollback id=txn-9c11 reason=query_failure
+2026-03-15T09:43:03.122Z INFO  response status=400 route=POST /api/v1/query
+2026-03-15T09:45:27.502Z INFO  tx.begin id=txn-a613 isolation=SERIALIZABLE route=POST /api/v1/signup
+2026-03-15T09:45:27.648Z ERROR tx.error id=txn-a613 code=CLIENT_ALREADY_EXISTS message="Duplicate client email"
+2026-03-15T09:45:27.649Z INFO  tx.rollback id=txn-a613 reason=constraint_violation
+2026-03-15T09:45:27.649Z INFO  response status=400 route=POST /api/v1/signup
+2026-03-15T09:47:58.904Z INFO  tx.begin id=txn-b3a8 isolation=SERIALIZABLE route=POST /api/v1/pay
+2026-03-15T09:47:59.031Z ERROR tx.error id=txn-b3a8 code=PAYMENT_FAILED message="No active subscription"
+2026-03-15T09:47:59.031Z INFO  tx.rollback id=txn-b3a8 reason=validation_error
+2026-03-15T09:47:59.032Z INFO  response status=400 route=POST /api/v1/pay
+2026-03-15T09:49:14.220Z INFO  tx.begin id=txn-c7d2 isolation=REPEATABLE_READ route=POST /api/v1/login
+2026-03-15T09:49:14.268Z ERROR tx.error id=txn-c7d2 code=INVALID_CREDENTIALS message="Password mismatch"
+2026-03-15T09:49:14.268Z INFO  tx.rollback id=txn-c7d2 reason=auth_failure
+2026-03-15T09:49:14.268Z INFO  response status=400 route=POST /api/v1/login

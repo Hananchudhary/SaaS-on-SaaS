@@ -188,7 +188,7 @@ CREATE TABLE OverduePenalty (
 CREATE TABLE AccessLog (
     log_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    action ENUM('INSERT', 'UPDATE', 'DELETE', 'SELECT') NOT NULL,
+    action ENUM('INSERT', 'UPDATE', 'DELETE', 'SELECT', 'SHOW', 'DESCRIBE') NOT NULL,
     table_name VARCHAR(100) NOT NULL,
     timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status ENUM('Success', 'Failure') NOT NULL,
@@ -196,7 +196,7 @@ CREATE TABLE AccessLog (
     CONSTRAINT fk_accesslog_user FOREIGN KEY (user_id) 
         REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT chk_action CHECK (
-        action IN ('INSERT', 'UPDATE', 'DELETE', 'SELECT')
+        action IN ('INSERT', 'UPDATE', 'DELETE', 'SELECT', 'SHOW', 'DESCRIBE')
     ),
     CONSTRAINT chk_log_status CHECK (
         status IN ('Success', 'Failure')
@@ -294,34 +294,24 @@ CREATE TRIGGER update_invoice_on_payment
 AFTER INSERT ON Payment
 FOR EACH ROW
 BEGIN
-    DECLARE total_paid DECIMAL(12,2);
-    DECLARE invoice_amount DECIMAL(12,2);
-    DECLARE new_status VARCHAR(20);
     
     IF NEW.status = 'Success' THEN
-        SELECT SUM(amount) INTO total_paid
-        FROM Payment
-        WHERE invoice_id = NEW.invoice_id AND status = 'Success';
-        
-        SELECT amount INTO invoice_amount
-        FROM Invoice
-        WHERE invoice_id = NEW.invoice_id;
-        
-        IF total_paid >= invoice_amount THEN
-            SET new_status = 'Paid';
-        ELSEIF total_paid > 0 THEN
-            SET new_status = 'Partial';
-        ELSE
-            SET new_status = 'Pending';
-        END IF;
         
         UPDATE Invoice
-        SET paid_amount = total_paid,
-            status = new_status,
-            paid_date = CASE 
-                WHEN total_paid >= amount THEN NEW.payment_date
-                ELSE NULL
-            END
+        SET paid_amount = NEW.amount,
+            status = 'Paid',
+            paid_date = NEW.payment_date
+        WHERE invoice_id = NEW.invoice_id;
+    END IF;
+END$$
+
+CREATE TRIGGER update_overdue_on_payment
+AFTER UPDATE ON Invoice
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'Paid' THEN
+        UPDATE OverduePenalty
+        SET applied = True
         WHERE invoice_id = NEW.invoice_id;
     END IF;
 END$$

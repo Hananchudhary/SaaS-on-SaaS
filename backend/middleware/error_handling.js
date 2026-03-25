@@ -43,7 +43,7 @@ const ErrorCodes = {
         message: 'Logout failed due to server error'
     },
 
-    UNKNOWN_ERROR: {
+    UNKNOWN_ERROR:{
         code: 900,
         message: 'An unknown error occured'
     },
@@ -128,7 +128,11 @@ const ErrorCodes = {
     INVOICE_ALREADY_EXISTS: {
         code: 705,
         message: 'Invoice for this period already exists'
-    }
+    },
+    INVALID_DATA : {
+        code: 706,
+        message: 'Data cannot be export in the specified format'
+    },
 };
 
 

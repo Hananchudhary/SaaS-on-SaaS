@@ -6,10 +6,12 @@
     "chalk": "^5.6.2",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
     "mysql2": "^3.19.1",
-    "node-sql-parser": "^5.4.0"
+    "node-sql-parser": "^5.4.0",
+    "pdfkit": "^0.16.0"
   }
 }
