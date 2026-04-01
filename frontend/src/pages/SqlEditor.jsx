@@ -48,13 +48,36 @@ export default function SqlEditor() {
     if (!lastResponse) return;
     setExporting(true);
     try {
-      const res = await api.post('/exportData', {
-        responseData: lastResponse,
-        exportType: type,
-      }, { responseType: 'blob' });
-
+      const sessionId = sessionStorage.getItem('session_id');
       const ext = type.toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
-      const blob = new Blob([res.data]);
+      const contentType = type.toLowerCase() === 'pdf' 
+        ? 'application/pdf' 
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      
+      // Use fetch API directly for blob downloads to avoid axios response parsing issues
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'}/exportData`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-id': sessionId,
+        },
+        body: JSON.stringify({
+          responseData: lastResponse,
+          exportType: type,
+        }),
+      });
+
+      if (!response.ok) {
+        // Try to parse error response
+        const contentTypeHeader = response.headers.get('content-type');
+        if (contentTypeHeader && contentTypeHeader.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData?.error?.message || 'Export failed');
+        }
+        throw new Error(`Export failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -65,7 +88,8 @@ export default function SqlEditor() {
       URL.revokeObjectURL(url);
       showToast(`${type} export downloaded`, 'success');
     } catch (err) {
-      showToast('Export failed', 'error');
+      console.error('Export error:', err);
+      showToast(err.message || 'Export failed', 'error');
     } finally {
       setExporting(false);
     }

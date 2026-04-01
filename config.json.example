@@ -1,0 +1,33 @@
+{
+  "system_user": {
+    "username": username_for_system_admin, 
+    "email": email_for_system_admin,
+    "password": passwowrd_for_system_admin
+  },
+  "plans": [
+    {
+      "plan_name": name_for_plan1,
+      "tier_1_users": max_tier1_users_for_plan1,
+      "tier_2_users": max_tier2_users_for_plan1,
+      "tier_3_users": max_tier3_users_for_plan1,
+      "monthly_price": monthly_charges_for_plan1,
+      "description": description_for_plan1
+    },
+    {
+      "plan_name": name_for_plan2,
+      "tier_1_users": max_tier1_users_for_plan2,
+      "tier_2_users": max_tier2_users_for_plan2,
+      "tier_3_users": max_tier3_users_for_plan2,
+      "monthly_price": monthly_charges_for_plan2,
+      "description": description_for_plan2
+    },
+    {
+      "plan_name": name_for_plan3,
+      "tier_1_users": max_tier1_users_for_plan3,
+      "tier_2_users": max_tier2_users_for_plan3,
+      "tier_3_users": max_tier3_users_for_plan3,
+      "monthly_price": monthly_charges_for_plan3,
+      "description": description_for_plan3
+    }
+  ]
+}

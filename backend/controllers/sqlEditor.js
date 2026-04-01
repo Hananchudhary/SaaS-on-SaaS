@@ -285,27 +285,122 @@ const buildExcelBuffer = async (rows) => {
 };
 
 const buildPdfBuffer = async (rows) => {
-    const columns = Object.keys(rows[0] || {});
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 40 });
+        // Use landscape layout to give more horizontal room for columns
+        const doc = new PDFDocument({ margin: 40, layout: 'landscape' });
         const chunks = [];
 
         doc.on('data', (chunk) => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
 
-        doc.fontSize(16).text('Export Data', { align: 'center' });
-        doc.moveDown(1);
-        doc.fontSize(10).text(columns.join(' | '));
-        doc.moveDown(0.5);
+        // Add an attractive title
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('#2c3e50').text('Export Data', { align: 'center' });
+        doc.moveDown(1.5);
 
-        rows.forEach((row) => {
-            const line = columns.map((col) => {
-                const value = row[col];
-                if (value === null || value === undefined) return '';
-                return String(value);
-            }).join(' | ');
-            doc.text(line);
+        if (!rows || rows.length === 0) {
+            doc.fontSize(12).font('Helvetica').fillColor('#7f8c8d').text('No data available.', { align: 'center' });
+            doc.end();
+            return;
+        }
+
+        const columns = Object.keys(rows[0] || {});
+        // Automatically calculate column width to span the page width
+        const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        const columnWidth = usableWidth / columns.length;
+        const startX = doc.page.margins.left;
+        let startY = doc.y;
+
+        // Helper to draw the header row
+        const drawHeader = (y) => {
+            // Determine header height
+            let headerHeight = 24; // minimum
+            doc.font('Helvetica-Bold').fontSize(10);
+            columns.forEach(col => {
+                const height = doc.heightOfString(col, { width: columnWidth - 10, align: 'left' });
+                if (height + 12 > headerHeight) headerHeight = height + 12;
+            });
+
+            doc.rect(startX, y, usableWidth, headerHeight).fill('#34495e'); // dark header background
+            doc.fillColor('#ffffff');
+            columns.forEach((col, i) => {
+                doc.text(col, startX + i * columnWidth + 5, y + 6, {
+                    width: columnWidth - 10,
+                    align: 'left'
+                });
+            });
+            // Draw column dividers for header
+            doc.lineWidth(0.5).strokeColor('#2c3e50');
+            for (let i = 0; i <= columns.length; i++) {
+                doc.moveTo(startX + i * columnWidth, y)
+                   .lineTo(startX + i * columnWidth, y + headerHeight)
+                   .stroke();
+            }
+            // Draw border outline
+            doc.moveTo(startX, y).lineTo(startX + usableWidth, y).stroke();
+            doc.moveTo(startX, y + headerHeight).lineTo(startX + usableWidth, y + headerHeight).stroke();
+            
+            return y + headerHeight;
+        };
+
+        startY = drawHeader(startY);
+
+        // Draw each row
+        rows.forEach((row, rowIndex) => {
+            // Pre-calculate the maximum height needed for this row
+            let rowHeight = 24; // minimum
+            doc.font('Helvetica').fontSize(10);
+            columns.forEach(col => {
+                let value = row[col];
+                if (value === null || value === undefined) value = '';
+                else value = String(value);
+
+                const height = doc.heightOfString(value, { width: columnWidth - 10, align: 'left' });
+                if (height + 12 > rowHeight) rowHeight = height + 12; // 6px padding on top and bottom
+            });
+
+            // Check if we need to wrap to a new page
+            if (startY + rowHeight > doc.page.height - doc.page.margins.bottom) {
+                doc.addPage({ margin: 40, layout: 'landscape' });
+                startY = doc.page.margins.top;
+                startY = drawHeader(startY); // Redraw header on new page
+            }
+
+            // Zebra striping for better readability
+            if (rowIndex % 2 === 0) {
+                doc.rect(startX, startY, usableWidth, rowHeight).fill('#f2f6f8');
+            } else {
+                doc.rect(startX, startY, usableWidth, rowHeight).fill('#ffffff');
+            }
+
+            doc.fillColor('#333333').font('Helvetica');
+            
+            // Draw column values
+            columns.forEach((col, i) => {
+                let value = row[col];
+                if (value === null || value === undefined) value = '';
+                else value = String(value);
+
+                doc.text(value, startX + i * columnWidth + 5, startY + 6, {
+                    width: columnWidth - 10,
+                    align: 'left'
+                });
+            });
+
+            // Draw vertical borders (cell dividers)
+            doc.lineWidth(0.5).strokeColor('#e0e0e0');
+            for (let i = 0; i <= columns.length; i++) {
+                doc.moveTo(startX + i * columnWidth, startY)
+                   .lineTo(startX + i * columnWidth, startY + rowHeight)
+                   .stroke();
+            }
+
+            // Draw bottom border
+            doc.moveTo(startX, startY + rowHeight)
+               .lineTo(startX + usableWidth, startY + rowHeight)
+               .stroke();
+
+            startY += rowHeight;
         });
 
         doc.end();

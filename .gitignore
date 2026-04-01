@@ -1,2 +1,5 @@
-config.env
+frontend/config.env
 node_modules/
+backend/node_modules/
+backend/config.env
+config.json

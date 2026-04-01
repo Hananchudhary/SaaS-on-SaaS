@@ -13,6 +13,7 @@ const queryRoutes = require('./routes/queryRoutes');
 const infoRoutes = require('./routes/infoRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const healthRoutes = require('./routes/healthRoutes');
+const configRoutes = require('./routes/configRoutes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/v1', authRoutes);
 app.use('/api/v1', queryRoutes);
 app.use('/api/v1', infoRoutes);
 app.use('/api/v1', paymentRoutes);
+app.use('/api/v1', configRoutes);
 
 
 // ============================================================

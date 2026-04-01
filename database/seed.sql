@@ -1,15 +1,4 @@
 
-INSERT INTO Client (client_id, company_name, email, phone, address, status) VALUES
-(1, 'SYSTEM', 'system@saasplatform.com', '+1-800-SYSTEM', 'System Records', 'Active');
-
-INSERT INTO User (user_id,client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(1,1, 'system.admin', 'admin@saasplatform.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', NULL);
-
-INSERT INTO Plan (client_id, plan_name, tier_1_users, tier_2_users, tier_3_users, monthly_price, description) VALUES
-(1, 'Basic', 5, 2, 1, 49.99, 'Entry-level plan for small businesses'),
-(1, 'Professional', 20, 10, 5, 99.99, 'Mid-tier plan with more features'),
-(1, 'Enterprise', 100, 50, 25, 299.99, 'Full-featured plan for large organizations');
-
 INSERT INTO Client (company_name, email, phone, address, status) VALUES
 ('TechCorp Solutions', 'info@techcorp.com', '+1-212-555-0100', '123 Tech Ave, New York, NY 10001', 'Active'),
 ('Global Retail Inc', 'contact@globalretail.com', '+1-310-555-0200', '456 Market St, Los Angeles, CA 90001', 'Active'),
@@ -63,40 +52,40 @@ INSERT INTO Customer (client_id, company_name, email, phone, address, status) VA
 (6, 'Financial Advisors', 'info@financialadv.com', '+1-555-5005', '500 Wealth Ln, Boston, MA', 'Active');
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(2, 'john.doe', 'john.doe@techcorp.com', '$2a$10$HASH001', 3, 'Active', 1),
-(2, 'jane.smith', 'jane.smith@techcorp.com', '$2a$10$HASH002', 3, 'Active', 2),
-(2, 'bob.wilson', 'bob.wilson@techcorp.com', '$2a$10$HASH003', 2, 'Active', 2),
-(2, 'alice.brown', 'alice.brown@techcorp.com', '$2a$10$HASH004', 2, 'Active', 2),
-(2, 'charlie.davis', 'charlie.davis@techcorp.com', '$2a$10$HASH005', 1, 'Inactive', 3),
-(2, 'diana.miller', 'diana.miller@techcorp.com', '$2a$10$HASH006', 1, 'Active', 3);
+(2, 'john.doe', 'john.doe@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 1),
+(2, 'jane.smith', 'jane.smith@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 2),
+(2, 'bob.wilson', 'bob.wilson@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 2),
+(2, 'alice.brown', 'alice.brown@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 2),
+(2, 'charlie.davis', 'charlie.davis@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Inactive', 3),
+(2, 'diana.miller', 'diana.miller@techcorp.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 3);
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(3, 'sarah.jones', 'sarah.jones@globalretail.com', '$2a$10$HASH007', 3, 'Active', 1),
-(3, 'mike.taylor', 'mike.taylor@globalretail.com', '$2a$10$HASH008', 3, 'Active', 7),
-(3, 'lisa.anderson', 'lisa.anderson@globalretail.com', '$2a$10$HASH009', 2, 'Active', 7),
-(3, 'tom.martin', 'tom.martin@globalretail.com', '$2a$10$HASH010', 2, 'Active', 8),
-(3, 'emily.white', 'emily.white@globalretail.com', '$2a$10$HASH011', 1, 'Active', 8),
-(3, 'kevin.harris', 'kevin.harris@globalretail.com', '$2a$10$HASH012', 1, 'Suspended', 9);
+(3, 'sarah.jones', 'sarah.jones@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 1),
+(3, 'mike.taylor', 'mike.taylor@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 7),
+(3, 'lisa.anderson', 'lisa.anderson@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 7),
+(3, 'tom.martin', 'tom.martin@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 8),
+(3, 'emily.white', 'emily.white@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 8),
+(3, 'kevin.harris', 'kevin.harris@globalretail.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Suspended', 9);
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(4, 'david.clark', 'david.clark@healthplus.com', '$2a$10$HASH013', 3, 'Active', 1),
-(4, 'nancy.lee', 'nancy.lee@healthplus.com', '$2a$10$HASH014', 3, 'Active', 13),
-(4, 'kevin.hall', 'kevin.hall@healthplus.com', '$2a$10$HASH015', 2, 'Suspended', 13),
-(4, 'rachel.adams', 'rachel.adams@healthplus.com', '$2a$10$HASH016', 1, 'Active', 14),
-(4, 'steven.king', 'steven.king@healthplus.com', '$2a$10$HASH017', 2, 'Active', 14);
+(4, 'david.clark', 'david.clark@healthplus.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 1),
+(4, 'nancy.lee', 'nancy.lee@healthplus.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 13),
+(4, 'kevin.hall', 'kevin.hall@healthplus.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Suspended', 13),
+(4, 'rachel.adams', 'rachel.adams@healthplus.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 14),
+(4, 'steven.king', 'steven.king@healthplus.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 14);
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(5, 'peter.parker', 'peter.parker@edusmart.com', '$2a$10$HASH018', 3, 'Active', 1),
-(5, 'mary.jane', 'mary.jane@edusmart.com', '$2a$10$HASH019', 2, 'Active', 18),
-(5, 'harry.osborn', 'harry.osborn@edusmart.com', '$2a$10$HASH020', 1, 'Active', 18);
+(5, 'peter.parker', 'peter.parker@edusmart.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 1),
+(5, 'mary.jane', 'mary.jane@edusmart.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 18),
+(5, 'harry.osborn', 'harry.osborn@edusmart.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 18);
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
-(6, 'jack.morgan', 'jack.morgan@financepro.com', '$2a$10$HASH021', 3, 'Active', 1),
-(6, 'emma.stone', 'emma.stone@financepro.com', '$2a$10$HASH022', 3, 'Active', 21),
-(6, 'oliver.reed', 'oliver.reed@financepro.com', '$2a$10$HASH023', 2, 'Active', 21),
-(6, 'sophia.chen', 'sophia.chen@financepro.com', '$2a$10$HASH024', 2, 'Active', 22),
-(6, 'liam.wong', 'liam.wong@financepro.com', '$2a$10$HASH025', 1, 'Active', 22),
-(6, 'ava.brown', 'ava.brown@financepro.com', '$2a$10$HASH026', 1, 'Active', 23);
+(6, 'jack.morgan', 'jack.morgan@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 1),
+(6, 'emma.stone', 'emma.stone@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 3, 'Active', 21),
+(6, 'oliver.reed', 'oliver.reed@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 21),
+(6, 'sophia.chen', 'sophia.chen@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 2, 'Active', 22),
+(6, 'liam.wong', 'liam.wong@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 22),
+(6, 'ava.brown', 'ava.brown@financepro.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 23);
 
 INSERT INTO Subscription (client_id, customer_id, plan_id, start_date, end_date, status, auto_renew) VALUES
 (2, NULL, 1, '2024-01-01', '2024-12-31', 'Active', TRUE),    
@@ -288,22 +277,22 @@ INSERT INTO UserSession (user_id, login_time, logout_time) VALUES
 (3, '2024-01-01 09:00:00', '2024-01-01 17:00:00'),
 (3, '2024-01-02 08:45:00', '2024-01-02 16:30:00'),
 (4, '2024-01-03 10:00:00', '2024-01-03 15:45:00'),
-(4, '2024-01-04 09:30:00', NULL),
+(4, '2024-01-04 09:30:00', '2024-01-04 09:50:00'),
 
 -- Global Retail sessions
 (8, '2024-01-15 08:30:00', '2024-01-15 19:00:00'),
 (9, '2024-01-16 09:00:00', '2024-01-16 18:30:00'),
-(10, '2024-01-17 08:45:00', NULL),
+(10, '2024-01-17 08:45:00', '2024-01-17 08:55:00'),
 
 -- HealthPlus sessions
 (14, '2024-02-05 09:00:00', '2024-02-05 17:30:00'),
 (15, '2024-02-10 08:30:00', '2024-02-10 16:45:00'),
-(16, '2024-02-15 09:15:00', NULL),
+(16, '2024-02-15 09:15:00', '2024-02-15 09:45:00'),
 
 -- FinancePro sessions
 (22, '2024-03-05 08:45:00', '2024-03-05 18:15:00'),
 (23, '2024-03-10 09:30:00', '2024-03-10 17:45:00'),
-(24, '2024-03-15 08:00:00', NULL),
+(24, '2024-03-15 08:00:00', '2024-03-15 08:30:30'),
 (25, '2024-03-20 09:15:00', '2024-03-20 18:30:00'),
 (22, '2024-04-01 08:30:00', '2024-04-01 17:00:00'),
-(23, '2024-04-02 09:00:00', NULL);
+(23, '2024-04-02 09:00:00', '2024-04-02 09:30:30');

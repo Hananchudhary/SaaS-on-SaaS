@@ -102,7 +102,7 @@ const getTables = async (req, res) => {
                         queryParams = [clientId];
                         break;
                     case 'AccessLog':
-                        dataQuery = `SELECT * FROM AccessLog WHERE user_id IN(SELECT user_id From User Where client_id=?)`;
+                        dataQuery = `SELECT * FROM AccessLog WHERE user_id IN(SELECT user_id From User Where client_id=?) AND TABLE_NAME != 'UserSession'`;
                         queryParams = [clientId];
                         break;
                     default:
@@ -183,7 +183,8 @@ const getStatics = async (req, res) => {
 
             const [activeSessions] = await connection.query(
                 `SELECT COUNT(*) as active_session_count FROM UserSession us 
-                 WHERE us.user_id IN(SELECT u.user_id FROM User u WHERE u.client_id = ?)`,
+                 WHERE us.user_id IN(SELECT u.user_id FROM User u WHERE u.client_id = ?)
+                 AND us.logout_time IS NULL`,
                 [clientId]
             );
 

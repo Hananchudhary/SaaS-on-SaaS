@@ -1,20 +1,7 @@
 
-DROP DATABASE IF EXISTS saas_db;
-CREATE DATABASE saas_db;
-USE saas_db;
-DROP TRIGGER IF EXISTS log_client_insert;
-
-
-DROP TABLE IF EXISTS UserSession;
-DROP TABLE IF EXISTS AccessLog;
-DROP TABLE IF EXISTS OverduePenalty;
-DROP TABLE IF EXISTS Payment;
-DROP TABLE IF EXISTS Invoice;
-DROP TABLE IF EXISTS Subscription;
-DROP TABLE IF EXISTS Customer;
-DROP TABLE IF EXISTS User;
-DROP TABLE IF EXISTS Plan;
-DROP TABLE IF EXISTS Client;
+-- DROP DATABASE IF EXISTS saas_db;
+-- CREATE DATABASE saas_db;
+-- USE saas_db;
 
 CREATE TABLE Client (
     client_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -694,8 +681,6 @@ FOR EACH ROW
 BEGIN
     DECLARE v_user_id INT DEFAULT 1;
     
-    SET v_user_id = NEW.user_id;
-    
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'INSERT', 'UserSession', NOW(), 'Success');
 END$$
@@ -705,8 +690,6 @@ AFTER UPDATE ON UserSession
 FOR EACH ROW
 BEGIN
     DECLARE v_user_id INT DEFAULT 1;
-    
-    SET v_user_id = NEW.user_id;
     
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'UPDATE', 'UserSession', NOW(), 'Success');
@@ -718,21 +701,8 @@ FOR EACH ROW
 BEGIN
     DECLARE v_user_id INT DEFAULT 1;
     
-    SET v_user_id = OLD.user_id;
-    
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'DELETE', 'UserSession', NOW(), 'Success');
-END$$
-
-CREATE PROCEDURE SetCurrentUser(IN p_user_id INT)
-BEGIN
-    SET @current_user_id = p_user_id;
-END$$
-
-CREATE FUNCTION GetCurrentUser() RETURNS INT
-DETERMINISTIC
-BEGIN
-    RETURN @current_user_id;
 END$$
 
 DELIMITER ;
