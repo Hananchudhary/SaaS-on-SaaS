@@ -38,6 +38,18 @@ export function AuthProvider({ children }) {
     return userData;
   }, []);
 
+  const setWarning = useCallback((warning) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      return { ...prev, warning: warning || null };
+    });
+    if (warning) {
+      sessionStorage.setItem('warning', warning);
+    } else {
+      sessionStorage.removeItem('warning');
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post('/logout');
@@ -51,7 +63,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, login, logout, setWarning, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );

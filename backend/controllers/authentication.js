@@ -46,12 +46,13 @@ const login = async (req, res) => {
             if (!isPasswordValid) throw { status: 400, code: ErrorCodes.INVALID_CREDENTIALS };
 
             const [prev_inv] = await connection.query(`
-                SELECT i.subscription_id, p.monthly_price FROM 
-                Invoice i JOIN Subscription s ON 
-                s.subscription_id = i.subscription_id JOIN Plan p ON
-                p.plan_id = s.plan_id WHERE s.client_id = ? AND 
-                DATEDIFF(CURDATE() ,i.invoice_date) > 30 AND i.status = 'Paid' FOR UPDATE
-                `, [user.client_id]);
+                SELECT i.subscription_id, p.monthly_price FROM Invoice i JOIN Subscription s 
+                ON s.subscription_id = i.subscription_id JOIN Plan p ON p.plan_id = s.plan_id
+                JOIN (SELECT subscription_id, MAX(invoice_date) AS latest_date FROM Invoice
+                GROUP BY subscription_id) latest ON latest.subscription_id = i.subscription_id 
+                AND latest.latest_date = i.invoice_date WHERE s.client_id = ? AND 
+                DATEDIFF(CURDATE(), i.invoice_date) > 30 AND i.status = 'Paid' FOR UPDATE`, 
+            [user.client_id]);
             
             let hasOverdue = false;
             if (prev_inv.length > 0) {
@@ -61,10 +62,12 @@ const login = async (req, res) => {
                     `, [prev_inv[0].subscription_id, prev_inv[0].monthly_price]);
             } else {
                 const [invoiceDue1] = await connection.query(`
-                    SELECT i.invoice_id FROM Invoice i JOIN
-                    Subscription s ON i.subscription_id = s.subscription_id
-                    AND s.client_id = ? AND i.status = 'Pending' AND 
-                    DATEDIFF(CURDATE(),i.due_date) > 0 FOR UPDATE
+                    SELECT i.subscription_id, p.monthly_price FROM Invoice i JOIN Subscription s 
+                    ON s.subscription_id = i.subscription_id JOIN Plan p ON p.plan_id = s.plan_id
+                    JOIN (SELECT subscription_id, MAX(invoice_date) AS latest_date FROM Invoice
+                    GROUP BY subscription_id) latest ON latest.subscription_id = i.subscription_id 
+                    AND latest.latest_date = i.invoice_date WHERE s.client_id = ? AND 
+                    DATEDIFF(CURDATE(), i.due_date) > 0 AND i.status = 'Pending' FOR UPDATE
                     `, [user.client_id]);
                 if (invoiceDue1.length > 0) {
                     await connection.query(`

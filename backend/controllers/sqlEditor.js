@@ -16,21 +16,19 @@ const DISALLOWED_STATEMENT_TYPES = [
     'set'
 ];
 
-// Allowed DML operations per tier (tier1: read-only, tier2: update, tier3: full)
+// Allowed DML operations per tier (tier1: full, tier2: update, tier3: read-only)
 const TIER_PERMISSIONS = {
     3: ['SELECT', 'SHOW', 'DESCRIBE'],
     2: ['SELECT', 'SHOW', 'DESCRIBE', 'UPDATE'],
     1: ['SELECT', 'SHOW', 'DESCRIBE', 'INSERT', 'UPDATE', 'DELETE']
 };
 
-// ----------------------------------------------------------------------
-// Helper functions
-// ----------------------------------------------------------------------
+// Tables completely blocked for non-system clients
+const BLOCKED_TABLES_ALL = ['client'];
 
-/**
- * Check if the query contains any disallowed DDL statements.
- * Uses the AST to detect statement types.
- */
+// Tables blocked for INSERT/UPDATE/DELETE (only SELECT allowed for non-system)
+const BLOCKED_TABLES_WRITE = ['plan'];
+
 const containsDisallowedDDL = (ast) => {
     const statements = Array.isArray(ast) ? ast : [ast];
     for (const stmt of statements) {
@@ -66,11 +64,12 @@ const getTableNamesFromAST = (ast) => {
     const extractFromNode = (node) => {
         if (!node) return;
 
-        // Handle SELECT, DELETE, UPDATE
+        // Handle SELECT, DELETE, UPDATE, INSERT
         if (
             (node.type === 'select' && node.from) ||
             (node.type === 'delete' && node.from) ||
-            (node.type === 'update' && node.table)
+            (node.type === 'update' && node.table) ||
+            (node.type === 'insert' && node.table)
         ) {
             // normalize from or table clause to array
             let fromItems = [];
@@ -206,23 +205,73 @@ const injectTenantConditions = (ast, tenantCondition, clientId) => {
     }
 };
 
-/**
- * Main function to enforce tenant isolation on a query.
- * Takes the original SQL, clientId, and pre‑extracted table list.
- */
-const enforceTenantIsolation = (sql, clientId, tables) => {
+const TABLES_REQUIRING_CLIENT_ID = ['customer', 'user', 'subscription'];
+
+const TABLES_REQUIRING_USER_ID = ['usersession', 'accesslog'];
+
+
+const enforceTenantIsolation = (sql, clientId, userIDs,tables) => {
     if (clientId === 1 || tables.length === 0) return sql; // system client sees all
 
     try {
-        const parsed = parseQuery(sql); // we reuse parseQuery to get ast/type
+        const parsed = parseQuery(sql);
         if (!parsed.success) throw new Error(parsed.error);
         const ast = parsed.ast;
-
-        // For INSERT, we cannot easily rewrite, but constraints will catch invalid client_id.
-        // We return original SQL; validation is done by DB.
         if (parsed.type === 'INSERT') {
-            return sql;
+            const requireClient_id = tables.some(table =>
+                TABLES_REQUIRING_CLIENT_ID.includes(table)
+            );
+            const requireUser_id = tables.some(table =>
+                TABLES_REQUIRING_USER_ID.includes(table)
+            );
+            if(requireClient_id){
+                if(ast.columns.includes('client_id')){
+                    const colIndex = ast.columns.findIndex(
+                        col => col === 'client_id'
+                    );
+                    for (const val of ast.values) {
+                        const row = val.value;
+                        const clientNode = row[colIndex];
+                                        
+                        if (clientNode.value !== clientId) {
+                            throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
+                        }
+                    }
+                }
+            }
+            if(requireUser_id){
+                if(ast.columns.includes('user_id')){
+                    const colIndex = ast.columns.findIndex(
+                        col => col === 'user_id'
+                    );
+                    for (const val of ast.values) {
+                        const row = val.value;
+                        const clientNode = row[colIndex];
+                                        
+                        if(!userIDs.includes(clientNode.value)){
+                            throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
+                        }
+                    }
+                }
+            }
+            return parser.sqlify(ast);
         }
+        if(parsed.type === "UPDATE"){
+            const newVals = ast.set;
+            for (const s of newVals){
+                if(s.column === 'user_id'){
+                    if(s.value && s.value.type === 'number' && !userIDs.includes(s.value.value)){
+                        throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
+                    }   
+                }
+                if(s.column === 'client_id'){
+                    if (s.value && s.value.type && s.value.type === 'number' && s.value.value && s.value.value !== clientId) {
+                        throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
+                    }
+                }
+            }
+        }
+        console.log('initial check done');
         const tenantCondition = buildTenantConditions(tables, clientId);
         if (!tenantCondition) return sql;
 
@@ -261,12 +310,22 @@ const parseQuery = (sql) => {
     }
 };
 
-/**
- * Check if the operation is allowed for the given tier.
- */
 const checkTierPermission = (tierLevel, operation) => {
     const allowed = TIER_PERMISSIONS[tierLevel] || [];
     return allowed.includes(operation);
+};
+
+/**
+ * Check if table is blocked for all operations (SELECT, INSERT, UPDATE, DELETE)
+ */
+const isTableBlockedForAll = (tableName, clientId) => {
+    if (clientId === 1) return false;
+    return BLOCKED_TABLES_ALL.includes(tableName.toLowerCase());
+};
+
+const isTableBlockedForWrite = (tableName, clientId) => {
+    if (clientId === 1) return false;
+    return BLOCKED_TABLES_WRITE.includes(tableName.toLowerCase());
 };
 
 // ----------------------------------------------------------------------
@@ -492,11 +551,18 @@ const executeQuery = async (req, res) => {
             const tables = getTableNamesFromAST(ast);
 
             if (clientId !== 1) {
-                const blocked = tables.some(t => {
+                for (const t of tables) {
                     const name = t && typeof t.name === 'string' ? t.name.toLowerCase() : '';
-                    return name === 'client' || name === 'usersession';
-                });
-                if (blocked) throw { status: 403, code: ErrorCodes.CROSS_TENANT_ACCESS_DENIED };
+                    if (name === 'usersession') {
+                        throw { status: 403, code: ErrorCodes.CROSS_TENANT_ACCESS_DENIED };
+                    }
+                    if (isTableBlockedForAll(name, clientId)) {
+                        throw { status: 403, code: ErrorCodes.CROSS_TENANT_ACCESS_DENIED };
+                    }
+                    if (isTableBlockedForWrite(name, clientId) && ['INSERT', 'UPDATE', 'DELETE'].includes(operation)) {
+                        throw { status: 403, code: ErrorCodes.CROSS_TENANT_ACCESS_DENIED };
+                    }
+                }
             }
 
             if (!checkTierPermission(tierLevel, operation)) {
@@ -505,8 +571,23 @@ const executeQuery = async (req, res) => {
                 throw { status: 403, code: ErrorCodes.QUERY_NOT_ALLOWED };
             }
             console.log(`query: ${query}`);
-            const finalQuery = enforceTenantIsolation(query, clientId, tables);
-            console.log(`finalQuery: ${finalQuery}`);
+
+            const users = await connection.query(
+            `Select user_id from User u Join Client c
+            ON u.client_id = c.client_id AND c.client_id = ?`,[clientId]
+            );
+            let userIDs = [];
+            for (const s of users){
+                userIDs.push(s.user_id);
+            }
+            let finalQuery;
+            try {
+                finalQuery = enforceTenantIsolation(query, clientId, userIDs, tables);
+                console.log(`finalQuery: ${finalQuery}`);
+            } catch (enforceError) {
+                console.error('[enforceTenantIsolation ERROR]', enforceError.message, enforceError.stack);
+                throw { status: 400, code: ErrorCodes.QUERY_EXECUTION_FAILED, message: enforceError.message };
+            }
             try {
                 const [results] = await connection.query(finalQuery);
 
@@ -550,6 +631,7 @@ const executeQuery = async (req, res) => {
 
         return res.status(200).json(responseData);
     } catch (error) {
+        console.error('[Query] Full error:', error);
         if (error.status) {
             return res.status(error.status).json(createErrorResponse(error.code, error.message));
         }

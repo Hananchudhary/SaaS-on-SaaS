@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import { useToast } from '../ToastContext';
+import { useAuth } from '../AuthContext';
 
 export default function Payment() {
+  const { setWarning } = useAuth();
   const { showToast } = useToast();
   const [billing, setBilling] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,7 @@ export default function Payment() {
     try {
       await api.post('/pay', { payment_amount: parseFloat(amount) });
       showToast('Payment processed successfully! Editor access has been re-enabled.', 'success');
+      setWarning(null);
       fetchBilling();
     } catch (err) {
       const msg = err.response?.data?.error?.message || 'Payment failed';

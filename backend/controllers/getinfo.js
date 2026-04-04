@@ -102,7 +102,7 @@ const getTables = async (req, res) => {
                         queryParams = [clientId];
                         break;
                     case 'AccessLog':
-                        dataQuery = `SELECT * FROM AccessLog WHERE user_id IN(SELECT user_id From User Where client_id=?) AND TABLE_NAME != 'UserSession'`;
+                        dataQuery = `SELECT * FROM AccessLog WHERE user_id IN(SELECT user_id From User Where client_id=?) AND table_name != 'UserSession'`;
                         queryParams = [clientId];
                         break;
                     default:
@@ -180,15 +180,24 @@ const getStatics = async (req, res) => {
             if (session.client_status !== 'Active') throw { status: 401, code: ErrorCodes.CLIENT_INACTIVE };
 
             await connection.query('SET @current_user_id = ?', [session.user_id]);
-
-            const [activeSessions] = await connection.query(
+            
+            let activeSessions;
+            if(clientId !==1){
+                [activeSessions] = await connection.query(
                 `SELECT COUNT(*) as active_session_count FROM UserSession us 
                  WHERE us.user_id IN(SELECT u.user_id FROM User u WHERE u.client_id = ?)
                  AND us.logout_time IS NULL`,
                 [clientId]
-            );
-
-            const [userCounts] = await connection.query(
+                );
+            }
+            else{
+                [activeSessions] = await connection.query(
+                `SELECT COUNT(*) as active_session_count FROM UserSession us 
+                 WHERE us.logout_time IS NULL`);
+            }
+            let userCounts;
+            if(clientId !==1){
+                [userCounts] = await connection.query(
                 `SELECT 
                     COUNT(*) as total_users,
                     SUM(CASE WHEN tier_level = 1 THEN 1 ELSE 0 END) as tier_1_count,
@@ -197,24 +206,35 @@ const getStatics = async (req, res) => {
                     SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_users
                  FROM User WHERE client_id = ?`,
                 [clientId]
-            );
-
+                );
+            }
+            else{
+                [userCounts] = await connection.query(
+                `SELECT 
+                    COUNT(*) as total_users,
+                    SUM(CASE WHEN tier_level = 1 THEN 1 ELSE 0 END) as tier_1_count,
+                    SUM(CASE WHEN tier_level = 2 THEN 1 ELSE 0 END) as tier_2_count,
+                    SUM(CASE WHEN tier_level = 3 THEN 1 ELSE 0 END) as tier_3_count,
+                    SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_users
+                 FROM User`);
+            }
             let planLimits = [];
             if (clientId !== 1) {
                 const [plans] = await connection.query(
                     `SELECT p.plan_id, p.plan_name, COUNT(DISTINCT s.customer_id) AS subscribed
-                     FROM Plan p LEFT JOIN Subscription s ON s.plan_id = p.plan_id
-                     WHERE p.client_id = ? GROUP BY p.plan_id, p.plan_name`,
+                     FROM Plan p LEFT JOIN Subscription s ON s.plan_id = p.plan_id LEFT JOIN Customer c
+                     ON c.client_id = s.client_id WHERE p.client_id = ? AND s.status = 'Active' AND
+                     c.status = 'Active' GROUP BY p.plan_id, p.plan_name`,
                     [clientId]
                 );
                 planLimits = plans;
             } else {
                 const [clientPlans] = await connection.query(
                     `SELECT p.plan_id, p.plan_name, COUNT(DISTINCT s.client_id) AS subscribed
-                     FROM Plan p LEFT JOIN Subscription s ON s.plan_id = p.plan_id
-                     LEFT JOIN Client c ON s.client_id = c.client_id WHERE c.status = 'Active'
-                     GROUP BY p.plan_id, p.plan_name`,
-                    []
+                     FROM Plan p LEFT JOIN Subscription s ON s.plan_id = p.plan_id LEFT JOIN Client c
+                     ON s.client_id = c.client_id WHERE c.status = 'Active' AND p.client_id = ?
+                     AND s.status = 'Active' GROUP BY p.plan_id, p.plan_name`,
+                    [clientId]
                 );
                 planLimits = clientPlans;
             }

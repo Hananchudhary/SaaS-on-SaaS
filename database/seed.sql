@@ -6,6 +6,13 @@ INSERT INTO Client (company_name, email, phone, address, status) VALUES
 ('EduSmart Learning', 'support@edusmart.com', '+1-617-555-0400', '321 Education Dr, Boston, MA 02101', 'Suspended'),
 ('FinancePro LLC', 'info@financepro.com', '+1-415-555-0500', '654 Money St, San Francisco, CA 94101', 'Active');
 
+INSERT INTO Subscription(client_id, plan_id) VALUES
+(2,1),
+(3,2),
+(4,3),
+(5,1),
+(6,2);
+
 INSERT INTO Plan (client_id, plan_name, tier_1_users, tier_2_users, tier_3_users, monthly_price, description) VALUES
 (2, 'TechCorp Custom', 50, 25, 10, 199.99, 'Custom plan for TechCorp'),
 (3, 'Retail Pro', 30, 15, 8, 149.99, 'Special retail-focused plan'),
@@ -296,3 +303,29 @@ INSERT INTO UserSession (user_id, login_time, logout_time) VALUES
 (25, '2024-03-20 09:15:00', '2024-03-20 18:30:00'),
 (22, '2024-04-01 08:30:00', '2024-04-01 17:00:00'),
 (23, '2024-04-02 09:00:00', '2024-04-02 09:30:30');
+
+-- ============================================================
+-- SECTION 12: OVERDUE DEMO CLIENT (SQL Editor Access Block Test)
+-- ============================================================
+
+INSERT INTO Client (company_name, email, phone, address, status) VALUES
+('Overdue Demo Co', 'overdue.demo@saas.com', '+1-555-9000', '900 Demo Blvd, Austin, TX 73301', 'Active');
+SET @demo_client_id = LAST_INSERT_ID();
+
+INSERT INTO Plan (client_id, plan_name, tier_1_users, tier_2_users, tier_3_users, monthly_price, description) VALUES
+(@demo_client_id, 'Overdue Demo Plan', 3, 2, 1, 99.99, 'Plan used to test overdue access blocking');
+SET @demo_plan_id = LAST_INSERT_ID();
+
+INSERT INTO Subscription (client_id, customer_id, plan_id, start_date, end_date, status, auto_renew) VALUES
+(@demo_client_id, NULL, 2, '2026-04-05', '2027-01-01', 'Active', TRUE);
+SET @demo_subscription_id = LAST_INSERT_ID();
+
+INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
+(@demo_client_id, 'overdue.admin', 'overdue.admin@saas.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 1);
+
+INSERT INTO Invoice (subscription_id, invoice_date, due_date, amount, paid_amount, status, paid_date) VALUES
+(@demo_subscription_id, '2026-02-01', '2026-02-02', 99.99, 0.00, 'Overdue', NULL);
+SET @demo_invoice_id = LAST_INSERT_ID();
+
+INSERT INTO OverduePenalty (invoice_id, penalty_date, applied, created_at) VALUES
+(@demo_invoice_id, '2026-02-04', FALSE, '2026-02-04 00:00:00');

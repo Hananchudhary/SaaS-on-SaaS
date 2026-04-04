@@ -61,7 +61,7 @@ const getPayment = async (req, res) => {
             const daysSincePenalty = (overdueResult.length > 0) ? overdueResult[0].days : 0;
             const planPrice = parseFloat(planResult[0].monthly_price);
             const OverDueCharges = daysSincePenalty * (overDuePricePerday * planPrice);
-
+            console.log(overdueResult);
             return {
                 success: true,
                 plan_amount: planPrice,

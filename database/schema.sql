@@ -35,8 +35,7 @@ CREATE TABLE Plan (
         tier_3_users >= 0
     ),
     CONSTRAINT chk_monthly_price CHECK (monthly_price >= 0),
-    CONSTRAINT unq_plan_name_per_client UNIQUE (plan_name, client_id), 
-    CONSTRAINT unq_plan_id_per_client UNIQUE (plan_id, client_id)
+    CONSTRAINT unq_plan_name_per_client UNIQUE (plan_name, client_id)
     
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -352,6 +351,28 @@ BEGIN
     IF @current_user_id IS NOT NULL THEN
         SET v_user_id = @current_user_id;
     END IF;
+
+    IF NEW.client_id != 1 AND OLD.status <> NEW.status THEN
+        IF NEW.status IN ('Inactive', 'Suspended') THEN
+            UPDATE User
+            SET status = NEW.status
+            WHERE client_id = NEW.client_id;
+
+            IF NEW.status = 'Inactive' THEN
+                UPDATE Subscription
+                SET status = 'Expired',
+                    end_date = CURDATE()
+                WHERE client_id = NEW.client_id
+                  AND status = 'Active';
+            ELSEIF NEW.status = 'Suspended' THEN
+                UPDATE Subscription
+                SET status = 'Cancelled',
+                    end_date = CURDATE()
+                WHERE client_id = NEW.client_id
+                  AND status = 'Active';
+            END IF;
+        END IF;
+    END IF;
     
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'UPDATE', 'Client', NOW(), 'Success');
@@ -439,6 +460,22 @@ BEGIN
     IF @current_user_id IS NOT NULL THEN
         SET v_user_id = @current_user_id;
     END IF;
+
+    IF OLD.status <> NEW.status THEN
+        IF NEW.status = 'Inactive' THEN
+            UPDATE Subscription
+            SET status = 'Expired',
+                end_date = CURDATE()
+            WHERE customer_id = NEW.customer_id
+              AND status = 'Active';
+        ELSEIF NEW.status = 'Suspended' THEN
+            UPDATE Subscription
+            SET status = 'Cancelled',
+                end_date = CURDATE()
+            WHERE customer_id = NEW.customer_id
+              AND status = 'Active';
+        END IF;
+    END IF;
     
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'UPDATE', 'Customer', NOW(), 'Success');
@@ -456,6 +493,57 @@ BEGIN
     
     INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
     VALUES (v_user_id, 'DELETE', 'Customer', NOW(), 'Success');
+END$$
+
+CREATE TRIGGER enforce_user_limit_before_insert
+BEFORE INSERT ON User
+FOR EACH ROW
+BEGIN
+    DECLARE v_plan_id INT;
+    DECLARE v_limit INT;
+    DECLARE v_active_count INT;
+
+    -- Skip system client
+    IF NEW.client_id != 1 THEN
+        IF NEW.status = 'Active' THEN
+            SELECT s.plan_id INTO v_plan_id
+            FROM Subscription s
+            WHERE s.client_id = NEW.client_id
+              AND s.customer_id IS NULL
+              AND s.status = 'Active'
+            ORDER BY s.start_date DESC
+            LIMIT 1;
+
+            IF v_plan_id IS NULL THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'No active subscription for client';
+            END IF;
+
+            IF NEW.tier_level = 1 THEN
+                SELECT p.tier_1_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+            ELSEIF NEW.tier_level = 2 THEN
+                SELECT p.tier_2_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+            ELSE
+                SELECT p.tier_3_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+            END IF;
+
+            IF v_limit IS NULL THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Plan limits not found for active subscription';
+            END IF;
+
+            SELECT COUNT(*) INTO v_active_count
+            FROM User u
+            WHERE u.client_id = NEW.client_id
+              AND u.tier_level = NEW.tier_level
+              AND u.status = 'Active';
+
+            IF v_active_count >= v_limit THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Active user limit reached for this tier';
+            END IF;
+        END IF;
+    END IF;
 END$$
 
 CREATE TRIGGER log_user_insert
@@ -476,6 +564,61 @@ BEGIN
 
         INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
         VALUES (v_user_id, 'INSERT', 'User', NOW(), 'Success');
+    END IF;
+END$$
+
+CREATE TRIGGER enforce_user_limit_before_update
+BEFORE UPDATE ON User
+FOR EACH ROW
+BEGIN
+    DECLARE v_plan_id INT;
+    DECLARE v_limit INT;
+    DECLARE v_active_count INT;
+
+    -- Skip system client
+    IF NEW.client_id != 1 THEN
+        IF NEW.status = 'Active' THEN
+            -- Only enforce when activating or changing tier/client
+            IF NOT (OLD.status = 'Active' AND OLD.client_id = NEW.client_id AND OLD.tier_level = NEW.tier_level) THEN
+                SELECT s.plan_id INTO v_plan_id
+                FROM Subscription s
+                WHERE s.client_id = NEW.client_id
+                  AND s.customer_id IS NULL
+                  AND s.status = 'Active'
+                ORDER BY s.start_date DESC
+                LIMIT 1;
+
+                IF v_plan_id IS NULL THEN
+                    SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT = 'No active subscription for client';
+                END IF;
+
+                IF NEW.tier_level = 1 THEN
+                    SELECT p.tier_1_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+                ELSEIF NEW.tier_level = 2 THEN
+                    SELECT p.tier_2_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+                ELSE
+                    SELECT p.tier_3_users INTO v_limit FROM Plan p WHERE p.plan_id = v_plan_id;
+                END IF;
+
+                IF v_limit IS NULL THEN
+                    SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT = 'Plan limits not found for active subscription';
+                END IF;
+
+                SELECT COUNT(*) INTO v_active_count
+                FROM User u
+                WHERE u.client_id = NEW.client_id
+                  AND u.tier_level = NEW.tier_level
+                  AND u.status = 'Active'
+                  AND u.user_id <> OLD.user_id;
+
+                IF v_active_count >= v_limit THEN
+                    SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT = 'Active user limit reached for this tier';
+                END IF;
+            END IF;
+        END IF;
     END IF;
 END$$
 
