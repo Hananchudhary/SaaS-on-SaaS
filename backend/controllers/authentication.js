@@ -1,10 +1,70 @@
 
 const bcrypt = require('bcrypt');
 const { withTransaction } = require('../models/db.js');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../config.env') });
 
 const { ErrorCodes, createErrorResponse } = require('../middleware/error_handling.js');
 
+const TTL = 30 * 1000;
 const SALT_ROUNDS = 10;
+
+const crypto = require('crypto');
+
+const SECRET = process.env.HASH_SECRET || "asdgsayig7ewfsjaregwdas";
+
+const generateOTP = (email, time_period) => {
+  const timeBucket = Math.floor(Date.now() / time_period);
+  return computeOTP(email, timeBucket);
+};
+
+const computeOTP = (email, timeBucket) => {
+  const data = `${email}:${timeBucket}`;
+
+  const hmac = crypto
+    .createHmac('sha256', SECRET)
+    .update(data)
+    .digest();
+
+  const offset = hmac[hmac.length - 1] & 0xf;
+
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return (binary % 1000000).toString().padStart(6, '0');
+};
+
+const verifyOTP = (email, givenOTP) => {
+  const now = Date.now();
+  const currentBucket = Math.floor(now / TTL);
+
+  // allow small time drift
+  const bucketsToCheck = [
+    currentBucket,
+    currentBucket - 1 // allow previous window
+    // currentBucket + 1 // optional
+  ];
+
+  for (const bucket of bucketsToCheck) {
+    const expectedOTP = computeOTP(email, bucket);
+
+    // safe comparison
+    if (
+      crypto.timingSafeEqual(
+        Buffer.from(expectedOTP),
+        Buffer.from(givenOTP)
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const login = async (req, res) => {
     const { email, password } = req.body;
 
@@ -186,7 +246,7 @@ const signup = async (req, res) => {
         plan_name1, tier1_users_plan1, tier2_users_plan1, tier3_users_plan1, price_plan1,
         plan_name2, tier1_users_plan2, tier2_users_plan2, tier3_users_plan2, price_plan2,
         plan_name3, tier1_users_plan3, tier2_users_plan3, tier3_users_plan3, price_plan3,
-        username, admin_email, password
+        username, admin_email, password, otp_company, otp_admin
     } = req.body;
 
     try {
@@ -195,7 +255,7 @@ const signup = async (req, res) => {
         'plan_name1', 'tier1_users_plan1', 'tier2_users_plan1', 'tier3_users_plan1', 'price_plan1',
         'plan_name2', 'tier1_users_plan2', 'tier2_users_plan2', 'tier3_users_plan2', 'price_plan2',
         'plan_name3', 'tier1_users_plan3', 'tier2_users_plan3', 'tier3_users_plan3', 'price_plan3',
-        'username', 'admin_email', 'password'
+        'username', 'admin_email', 'password', 'otp_company', 'otp_admin'
     ];
 
     for (const field of requiredFields) {
@@ -205,6 +265,25 @@ const signup = async (req, res) => {
                 `Missing required field: ${field}`
             ));
         }
+    }
+    
+    const isValidCompany = verifyOTP(email, otp_company);
+    const isValidAdmin = verifyOTP(admin_email, otp_admin);
+
+    if(!isValidAdmin && !isValidCompany){
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.OTP_EXPIRED
+        ));
+    }
+    if(!isValidCompany){
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.OTP_COMPANY_INVALID
+        ));
+    }    
+    if(!isValidAdmin){
+        return res.status(400).json(createErrorResponse(
+            ErrorCodes.OTP_ADMIN_INVALID
+        ));
     }
         await withTransaction(async (connection) => {
             await connection.query('SET @current_user_id = NULL');
@@ -230,6 +309,12 @@ const signup = async (req, res) => {
             );
             const newClientId = clientResult.insertId;
 
+            await connection.query(
+                `INSERT INTO Subscription (client_id, plan_id, end_date) 
+                 VALUES (?, ?, DATE_ADD(CURRENT_DATE(), INTERVAL 1 month))`,
+                [newClientId, plan_id]
+            );
+
             const planValues = [
                 [plan_name1, tier1_users_plan1, tier2_users_plan1, tier3_users_plan1, price_plan1],
                 [plan_name2, tier1_users_plan2, tier2_users_plan2, tier3_users_plan2, price_plan2],
@@ -251,11 +336,6 @@ const signup = async (req, res) => {
                 [newClientId, username, admin_email, hashedPassword, 1]
             );
 
-            await connection.query(
-                `INSERT INTO Subscription (client_id, plan_id, end_date) 
-                 VALUES (?, ?, DATE_ADD(CURRENT_DATE(), INTERVAL 1 month))`,
-                [newClientId, plan_id]
-            );
         }, { isolationLevel: 'SERIALIZABLE' });
 
         return res.status(200).json({ success: true });
@@ -319,7 +399,7 @@ const changePassword = async (req, res) => {
             );
         });
 
-        return res.status(200).json({ success: true, message: 'Password updated successfully' });
+        return res.status(200).json({ success: true});
     } catch (error) {
         if (error.status) return res.status(error.status).json(createErrorResponse(error.code));
         console.error('[Change Password] Error:', error);
@@ -327,9 +407,30 @@ const changePassword = async (req, res) => {
     }
 };
 
+const requestOTP = async (req, res)=>{
+    const { company_email, admin_email } = req.body;
+
+    if(!company_email || !admin_email){
+        return res.status(400).json(createErrorResponse(ErrorCodes.MISSING_FIELDS));
+    }
+    try{
+        const companyOTP = generateOTP(company_email, TTL);
+        const adminOTP = generateOTP(admin_email, TTL);
+        if(!companyOTP || !adminOTP){
+            return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
+        }
+        console.log(`Comapny OTP: ${companyOTP}`);
+        console.log(`Admin OTP: ${adminOTP}`);
+        return res.status(200).json({ success: true});
+    }
+    catch(error){
+        return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
+    }
+};
 module.exports = {
     login,
     logout,
     signup,
-    changePassword
+    changePassword,
+    requestOTP
 };

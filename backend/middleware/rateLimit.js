@@ -26,6 +26,7 @@ const loginLimiter = createLimiter({
     return email ? `login:${email}` : keyGenerator(req);
   }
 });
+
 const signupLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
 const logoutLimiter = createLimiter({ windowMs: 15 * 60 * 1000, max: 30 });
 
@@ -38,6 +39,7 @@ const payGetLimiter = createLimiter({ windowMs: 60 * 1000, max: 40 });
 const tablesLimiter = createLimiter({ windowMs: 60 * 1000, max: 60 });
 const staticsLimiter = createLimiter({ windowMs: 60 * 1000, max: 60 });
 const systemPlansLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 120 });
+const OTPLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 4 });
 
 module.exports = {
   loginLimiter,
@@ -50,4 +52,5 @@ module.exports = {
   tablesLimiter,
   staticsLimiter,
   systemPlansLimiter,
+  OTPLimiter
 };

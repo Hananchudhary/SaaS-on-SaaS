@@ -10,6 +10,7 @@ const initialForm = {
   plan_name3: '', tier1_users_plan3: '100', tier2_users_plan3: '50', tier3_users_plan3: '25', price_plan3: '299.99',
   plan_id: '',
   username: '', admin_email: '', password: '', confirmPassword: '',
+  otp_company: '', otp_admin: '',
 };
 
 // System plan names for selection (these are fixed - user subscribes to system plans 1, 2, or 3)
@@ -88,8 +89,15 @@ export default function Signup() {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
   const [errors, setErrors] = useState({});
   const [systemPlans, setSystemPlans] = useState(DEFAULT_SYSTEM_PLANS);
+  const [otpSent, setOtpSent] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [adminEmailTouched, setAdminEmailTouched] = useState(false);
+  const emailPattern = /\S+@\S+\.\S+/;
+  const emailInvalid = emailTouched && form.email.length > 0 && !emailPattern.test(form.email);
+  const adminEmailInvalid = adminEmailTouched && form.admin_email.length > 0 && !emailPattern.test(form.admin_email);
 
   useEffect(() => {
     let isMounted = true;
@@ -165,6 +173,8 @@ export default function Signup() {
     if (!form.password) errs.password = 'Required';
     else if (form.password.length < 4) errs.password = 'Min 4 characters';
     if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
+    if (!form.otp_company.trim()) errs.otp_company = 'Required';
+    if (!form.otp_admin.trim()) errs.otp_admin = 'Required';
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -178,6 +188,8 @@ export default function Signup() {
       const { confirmPassword, ...payload } = form;
       // plan_id should be the system plan ID (1, 2, or 3)
       payload.plan_id = parseInt(payload.plan_id, 10);
+      payload.otp_company = String(payload.otp_company || '').trim();
+      payload.otp_admin = String(payload.otp_admin || '').trim();
       for (let i = 1; i <= 3; i++) {
         payload[`tier1_users_plan${i}`] = parseInt(payload[`tier1_users_plan${i}`], 10);
         payload[`tier2_users_plan${i}`] = parseInt(payload[`tier2_users_plan${i}`], 10);
@@ -192,6 +204,31 @@ export default function Signup() {
       showToast(msg, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const requestOtp = async () => {
+    if (!form.email.trim() || !form.admin_email.trim()) {
+      showToast('Enter both company email and admin email to receive OTPs', 'warning');
+      return;
+    }
+    if (!/\S+@\S+\.\S+/.test(form.email) || !/\S+@\S+\.\S+/.test(form.admin_email)) {
+      showToast('Please enter valid company and admin emails', 'warning');
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const res = await api.post('/signup/request-otp', {
+        company_email: form.email,
+        admin_email: form.admin_email,
+      });
+      setOtpSent(true);
+      showToast('OTPs sent to both emails', 'success');
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || 'Failed to send OTPs';
+      showToast(msg, 'error');
+    } finally {
+      setOtpSending(false);
     }
   };
 
@@ -232,11 +269,15 @@ export default function Signup() {
                 <label className="form-label">Company Email *</label>
                 <input 
                   type="email" 
-                  className={`form-input ${errors.email ? 'error' : ''}`} 
+                  className={`form-input ${(errors.email || emailInvalid) ? 'error' : ''}`} 
                   value={form.email} 
-                  onChange={(e) => handleChange('email', e.target.value)} 
+                  onChange={(e) => {
+                    if (!emailTouched) setEmailTouched(true);
+                    handleChange('email', e.target.value);
+                  }} 
                   placeholder="info@company.com" 
                 />
+                {emailInvalid && <div className="form-error">Invalid email</div>}
                 {errors.email && <div className="form-error">{errors.email}</div>}
               </div>
             </div>
@@ -304,11 +345,15 @@ export default function Signup() {
                 <label className="form-label">Admin Email *</label>
                 <input 
                   type="email" 
-                  className={`form-input ${errors.admin_email ? 'error' : ''}`} 
+                  className={`form-input ${(errors.admin_email || adminEmailInvalid) ? 'error' : ''}`} 
                   value={form.admin_email} 
-                  onChange={(e) => handleChange('admin_email', e.target.value)} 
+                  onChange={(e) => {
+                    if (!adminEmailTouched) setAdminEmailTouched(true);
+                    handleChange('admin_email', e.target.value);
+                  }} 
                   placeholder="admin@company.com" 
                 />
+                {adminEmailInvalid && <div className="form-error">Invalid email</div>}
                 {errors.admin_email && <div className="form-error">{errors.admin_email}</div>}
               </div>
             </div>
@@ -337,6 +382,44 @@ export default function Signup() {
                 />
                 {errors.confirmPassword && <div className="form-error">{errors.confirmPassword}</div>}
               </div>
+            </div>
+          </div>
+
+          <div className="signup-section">
+            <h3>Verify Emails</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+              Send OTPs to both company and admin emails, then enter them below to complete signup.
+            </p>
+            <div className="form-row" style={{ alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Company Email OTP *</label>
+                <input
+                  className={`form-input ${errors.otp_company ? 'error' : ''}`}
+                  value={form.otp_company}
+                  onChange={(e) => handleChange('otp_company', e.target.value)}
+                  placeholder="Enter company OTP"
+                />
+                {errors.otp_company && <div className="form-error">{errors.otp_company}</div>}
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Admin Email OTP *</label>
+                <input
+                  className={`form-input ${errors.otp_admin ? 'error' : ''}`}
+                  value={form.otp_admin}
+                  onChange={(e) => handleChange('otp_admin', e.target.value)}
+                  placeholder="Enter admin OTP"
+                />
+                {errors.otp_admin && <div className="form-error">{errors.otp_admin}</div>}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={requestOtp}
+                disabled={otpSending}
+                style={{ height: 42, whiteSpace: 'nowrap' }}
+              >
+                {otpSending ? 'Sending...' : otpSent ? 'Resend OTPs' : 'Send OTPs'}
+              </button>
             </div>
           </div>
 

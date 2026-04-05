@@ -133,6 +133,18 @@ const ErrorCodes = {
         code: 706,
         message: 'Data cannot be export in the specified format'
     },
+    OTP_COMPANY_INVALID: {
+        code: 708,
+        message: 'Invalid OTP for company email'
+    },
+    OTP_ADMIN_INVALID: {
+        code: 709,
+        message: 'Invalid OTP for admin email'
+    },
+    OTP_EXPIRED: {
+        code: 710,
+        message: 'OTPs expired'
+    },
     RATE_LIMITED: {
         code: 429,
         message: 'Too many requests. Please try again later'
