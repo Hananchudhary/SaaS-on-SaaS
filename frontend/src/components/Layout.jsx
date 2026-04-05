@@ -33,6 +33,9 @@ export default function Layout() {
           <NavLink to="/payment" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <span className="nav-icon">💳</span> Payment
           </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon">⚙️</span> Settings
+          </NavLink>
           <button className="nav-link" onClick={handleLogout} style={{ border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', background: 'none' }}>
             <span className="nav-icon">🚪</span> Logout
           </button>

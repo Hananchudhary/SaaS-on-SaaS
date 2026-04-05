@@ -272,8 +272,64 @@ const signup = async (req, res) => {
     }
 };
 
+const changePassword = async (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const { old_password, new_password, confirm_password } = req.body;
+
+    if (!sessionId) {
+        return res.status(401).json(createErrorResponse(ErrorCodes.SESSION_NOT_FOUND));
+    }
+
+    if (!old_password || !new_password || !confirm_password) {
+        return res.status(400).json(createErrorResponse(ErrorCodes.MISSING_FIELDS));
+    }
+
+    if (new_password !== confirm_password) {
+        return res.status(400).json(createErrorResponse(ErrorCodes.INVALID_CREDENTIALS, 'New passwords do not match'));
+    }
+
+    try {
+        await withTransaction(async (connection) => {
+            const [sessions] = await connection.query(
+                `SELECT 
+                    us.user_id,
+                    u.password_hash,
+                    u.status as user_status
+                 FROM UserSession us
+                 JOIN User u ON us.user_id = u.user_id
+                 WHERE us.session_id = ? 
+                   AND us.logout_time IS NULL
+                 FOR UPDATE`,
+                [sessionId]
+            );
+
+            if (sessions.length === 0) throw { status: 401, code: ErrorCodes.SESSION_NOT_FOUND };
+
+            const user = sessions[0];
+            
+            if (user.user_status !== 'Active') throw { status: 401, code: ErrorCodes.USER_INACTIVE };
+            
+            const isPasswordValid = await bcrypt.compare(old_password, user.password_hash);
+            if (!isPasswordValid) throw {status: 400, code: ErrorCodes.INVALID_CREDENTIALS, message: 'Incorrect old password' };
+
+            const hashedNewPassword = await bcrypt.hash(new_password, SALT_ROUNDS);
+            await connection.query(
+                `UPDATE User SET password_hash = ? WHERE user_id = ?`,
+                [hashedNewPassword, user.user_id]
+            );
+        });
+
+        return res.status(200).json({ success: true, message: 'Password updated successfully' });
+    } catch (error) {
+        if (error.status) return res.status(error.status).json(createErrorResponse(error.code));
+        console.error('[Change Password] Error:', error);
+        return res.status(500).json(createErrorResponse(ErrorCodes.UNKNOWN_ERROR));
+    }
+};
+
 module.exports = {
     login,
     logout,
-    signup
+    signup,
+    changePassword
 };

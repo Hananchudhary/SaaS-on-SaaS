@@ -160,6 +160,59 @@ async function testLoginRateLimit() {
   }
 }
 
+async function testChangePassword() {
+    log('Test: Change Password API');
+    
+    // First login to get session
+    const sessionId = await login(SystemCreds);
+    if (!sessionId) {
+        fail('Change Password setup', { message: 'Could not log in' });
+        return;
+    }
+
+    try {
+        // Change to new password
+        const res = await axios.post(`${BASE_URL}/change-password`, {
+            old_password: SystemCreds.password,
+            new_password: 'new_system_admin',
+            confirm_password: 'new_system_admin'
+        }, { headers: { 'x-session-id': sessionId } });
+        if (res.data.success) {
+            pass('Changed password successfully');
+        } else {
+            fail('Changed password', res.data);
+            return;
+        }
+
+        // Logout
+        await axios.post(`${BASE_URL}/logout`, {}, {
+            headers: { 'x-session-id': sessionId }
+        });
+
+        // Test login with new password
+        const newSessionId = await login({ email: SystemCreds.email, password: 'new_system_admin' });
+        if (newSessionId) {
+            pass('Login with new password');
+            
+            // Revert changes back to old password to keep test environment stable
+            await axios.post(`${BASE_URL}/change-password`, {
+                old_password: 'new_system_admin',
+                new_password: SystemCreds.password,
+                confirm_password: SystemCreds.password
+            }, { headers: { 'x-session-id': newSessionId } });
+            
+            await axios.post(`${BASE_URL}/logout`, {}, {
+                headers: { 'x-session-id': newSessionId }
+            });
+        } else {
+            fail('Login with new password', { message: 'Failed to authenticate with updated password' });
+        }
+
+    } catch (err) {
+        fail('Change Password flow', err.response?.data || err);
+    }
+}
+
 
 async function runTests() {
 
@@ -174,6 +227,7 @@ async function runTests() {
     console.log('\n=== LOGIN TESTS ===\n');
 
     try {
+        await testChangePassword();
         // await testLoginRateLimit();
 
         const sessionId = await login(SystemCreds);

@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Tables from './pages/Tables';
 import SqlEditor from './pages/SqlEditor';
 import Payment from './pages/Payment';
+import Settings from './pages/Settings';
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="tables" element={<Tables />} />
               <Route path="sql-editor" element={<SqlEditor />} />
               <Route path="payment" element={<Payment />} />
+              <Route path="settings" element={<Settings />} />
             </Route>
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
