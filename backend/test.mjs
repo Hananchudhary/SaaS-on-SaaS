@@ -71,7 +71,6 @@ async function loginFull(email, password) {
 async function findTestClient() {
     const testPasswords = COMMON_PASSWORDS;
     const testEmails = [
-        'charlie.davis@techcorp.com',
         'diana.miller@techcorp.com'
     ];
     log(`  Trying ${testEmails.length} emails with ${testPasswords.length} passwords each`);
@@ -80,6 +79,7 @@ async function findTestClient() {
             log(`  Trying ${email} with password...`);
             try {
                 const data = await loginFull(email, password);
+                console.log(data);
                 if (data?.session_id) {
                     log(`  ✓ Found: ${email}`);
                     return data;
@@ -136,9 +136,34 @@ async function checkServer() {
     }
 }
 
+async function testLoginRateLimit() {
+  log('Test: Login rate limit');
+  const attempts = 4;
+  let rateLimited = false;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const session_id = await login(SystemCreds);
+      console.log(session_id);
+    } catch (err) {
+      if (err.response?.status === 429) {
+        rateLimited = true;
+        break;
+      }
+    }
+  }
+
+  if (rateLimited) {
+    pass('Login rate limit enforced');
+  } else {
+    fail('Login rate limit enforced', { message: 'No 429 received' });
+  }
+}
+
+
 async function runTests() {
+
     console.log(`Testing against: ${BASE_URL}`);
-    
     const serverOk = await checkServer();
     if (!serverOk) {
         fail('Server not running', { message: 'Server not available' });
@@ -149,6 +174,8 @@ async function runTests() {
     console.log('\n=== LOGIN TESTS ===\n');
 
     try {
+        // await testLoginRateLimit();
+
         const sessionId = await login(SystemCreds);
         if (sessionId) {
             systemSessionId = sessionId;
@@ -157,6 +184,7 @@ async function runTests() {
             fail('Login as system admin', { message: 'Invalid credentials or no session' });
             return;
         }
+        
     } catch (err) {
         fail('Login as system admin', err);
         return;

@@ -133,6 +133,10 @@ const ErrorCodes = {
         code: 706,
         message: 'Data cannot be export in the specified format'
     },
+    RATE_LIMITED: {
+        code: 429,
+        message: 'Too many requests. Please try again later'
+    },
 };
 
 

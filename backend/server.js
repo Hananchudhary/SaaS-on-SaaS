@@ -17,9 +17,8 @@ const configRoutes = require('./routes/configRoutes');
 
 const app = express();
 
-// ============================================================
-// Security & Utility Middleware
-// ============================================================
+// Ensure stable client IPs for rate limiting when behind proxies
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
