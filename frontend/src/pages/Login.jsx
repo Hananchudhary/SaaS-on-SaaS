@@ -7,15 +7,14 @@ export default function Login() {
   const { login } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
   const validate = () => {
     const errs = {};
-    if (!email.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email)) errs.email = 'Invalid email format';
+    if (!username.trim()) errs.username = 'Username is required';
     if (!password.trim()) errs.password = 'Password is required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -26,7 +25,7 @@ export default function Login() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const userData = await login(email, password);
+      const userData = await login(username, password);
       if (userData.warning) {
         showToast(userData.warning, 'warning');
       } else {
@@ -50,17 +49,17 @@ export default function Login() {
         </div>
         <form onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label className="form-label" htmlFor="login-email">Email</label>
+            <label className="form-label" htmlFor="login-username">Username</label>
             <input
-              id="login-email"
-              type="email"
-              className={`form-input ${errors.email ? 'error' : ''}`}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              autoComplete="email"
+              id="login-username"
+              type="text"
+              className={`form-input ${errors.username ? 'error' : ''}`}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="your_username"
+              autoComplete="username"
             />
-            {errors.email && <div className="form-error">{errors.email}</div>}
+            {errors.username && <div className="form-error">{errors.username}</div>}
           </div>
           <div className="form-group">
             <label className="form-label" htmlFor="login-password">Password</label>

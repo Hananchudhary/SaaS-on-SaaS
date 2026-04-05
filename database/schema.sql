@@ -74,7 +74,7 @@ CREATE TABLE User (
     CONSTRAINT fk_user_created_by FOREIGN KEY (created_by) 
         REFERENCES User(user_id) ON DELETE SET NULL,
     CONSTRAINT unq_user_email UNIQUE (client_id, email),
-    CONSTRAINT unq_username_per_client UNIQUE (client_id, username),
+    CONSTRAINT unq_username_per_client UNIQUE (username),
     CONSTRAINT chk_tier_level CHECK (tier_level IN (1, 2, 3)),
     CONSTRAINT chk_user_status CHECK (status IN ('Active', 'Inactive', 'Suspended'))
     

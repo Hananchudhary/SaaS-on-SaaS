@@ -66,9 +66,9 @@ const verifyOTP = (email, givenOTP) => {
 };
 
 const login = async (req, res) => {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
-    if (!email || !password) {
+    if (!username || !password) {
         return res.status(400).json(createErrorResponse(
             ErrorCodes.MISSING_FIELDS
         ));
@@ -89,8 +89,8 @@ const login = async (req, res) => {
                     c.status AS client_status
                  FROM User u
                  JOIN Client c ON u.client_id = c.client_id
-                 WHERE u.email = ?`,
-                [email]
+                 WHERE u.username = ?`,
+                [username]
             );
 
             if (users.length === 0) {

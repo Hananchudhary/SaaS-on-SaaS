@@ -22,11 +22,19 @@ const loginLimiter = createLimiter({
   max: 10,
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
-    const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase().trim() : '';
-    return email ? `login:${email}` : keyGenerator(req);
+    const username = typeof req.body?.username === 'string' ? req.body.username.toLowerCase().trim() : '';
+    return username ? `login:${username}` : keyGenerator(req);
   }
 });
 
+const changePasswordLimiter = createLimiter({
+  windowMs: 7 * 24 * 60 * 60 * 1000,
+  max: 1,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) =>{
+    return req.headers["x-session-id"] || req.ip;
+  }
+});
 const signupLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
 const logoutLimiter = createLimiter({ windowMs: 15 * 60 * 1000, max: 30 });
 
@@ -52,5 +60,6 @@ module.exports = {
   tablesLimiter,
   staticsLimiter,
   systemPlansLimiter,
-  OTPLimiter
+  OTPLimiter,
+  changePasswordLimiter
 };

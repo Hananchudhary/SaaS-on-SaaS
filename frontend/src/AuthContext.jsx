@@ -17,8 +17,8 @@ export function AuthProvider({ children }) {
     };
   });
 
-  const login = useCallback(async (email, password) => {
-    const res = await api.post('/login', { email, password });
+  const login = useCallback(async (username, password) => {
+    const res = await api.post('/login', { username, password });
     const data = res.data.data;
     const userData = {
       session_id: data.session_id,

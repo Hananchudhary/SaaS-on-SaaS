@@ -4,13 +4,13 @@ const ErrorCodes = {
     // Validation Errors (400)
     MISSING_FIELDS: {
         code: 400,
-        message: 'Email and password are required'
+        message: 'Username and password are required'
     },
 
     // Authentication Errors (401)
     INVALID_CREDENTIALS: {
         code: 401,
-        message: 'Invalid email or password'
+        message: 'Invalid username or password'
     },
     USER_INACTIVE: {
         code: 402,

@@ -3,6 +3,65 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../ToastContext';
 import api from '../api';
 
+const bitCount = Number(import.meta.env.VITE_BLOOM_SIZE || 100);
+const byteCount = Math.ceil(bitCount / 8)
+const bitArray = new Uint8Array(byteCount);
+const k = 3;
+function setBit(arr, index, value) {
+    const byteIndex = Math.floor(index / 8);
+    const bitIndex = index % 8;
+    if (value) {
+        arr[byteIndex] |= (1 << bitIndex); // set bit to 1
+    } else {
+        arr[byteIndex] &= ~(1 << bitIndex); // set bit to 0
+    }
+}
+function hash1(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function hash2(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return Math.abs(hash);
+}
+
+function hash3(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash + str.charCodeAt(i) * (i + 1)) % 100000;
+  }
+  return Math.abs(hash);
+}
+
+const hashFunctions = [hash1, hash2, hash3];
+function getBit(arr, index) {
+    const byteIndex = Math.floor(index / 8);
+    const bitIndex = index % 8;
+    return (arr[byteIndex] & (1 << bitIndex)) !== 0 ? 1 : 0;
+}
+
+function mightContain(item) {
+  return hashFunctions.every(fn => {
+    const index = fn(item) % bitCount;  // use total bits, not bytes
+    return getBit(bitArray, index) === 1;
+  });
+}
+
+function addItem(item) {
+  hashFunctions.forEach(fn => {
+    const index = fn(item) % bitCount;  // use total bits
+    setBit(bitArray, index, 1);
+  });
+}
+
 const initialForm = {
   company_name: '', email: '', phone: '', address: '',
   plan_name1: '', tier1_users_plan1: '5', tier2_users_plan1: '2', tier3_users_plan1: '1', price_plan1: '49.99',
@@ -95,9 +154,25 @@ export default function Signup() {
   const [otpSent, setOtpSent] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
   const [adminEmailTouched, setAdminEmailTouched] = useState(false);
+  const [usernameBloomTouched, setUsernameBloomTouched] = useState(false);
+  const [otpCompanyTouched, setOtpCompanyTouched] = useState(false);
+  const [otpAdminTouched, setOtpAdminTouched] = useState(false);
   const emailPattern = /\S+@\S+\.\S+/;
   const emailInvalid = emailTouched && form.email.length > 0 && !emailPattern.test(form.email);
   const adminEmailInvalid = adminEmailTouched && form.admin_email.length > 0 && !emailPattern.test(form.admin_email);
+  const usernameBloomHit =
+    usernameBloomTouched &&
+    form.username.trim().length > 0 &&
+    typeof mightContain === 'function' &&
+    mightContain(form.username.trim());
+  const otpCompanyInvalid =
+    otpCompanyTouched &&
+    form.otp_company.trim().length > 0 &&
+    form.otp_company.trim().length !== 6;
+  const otpAdminInvalid =
+    otpAdminTouched &&
+    form.otp_admin.trim().length > 0 &&
+    form.otp_admin.trim().length !== 6;
 
   useEffect(() => {
     let isMounted = true;
@@ -174,7 +249,9 @@ export default function Signup() {
     else if (form.password.length < 4) errs.password = 'Min 4 characters';
     if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
     if (!form.otp_company.trim()) errs.otp_company = 'Required';
+    else if (form.otp_company.trim().length !== 6) errs.otp_company = 'OTP must be 6 digits';
     if (!form.otp_admin.trim()) errs.otp_admin = 'Required';
+    else if (form.otp_admin.trim().length !== 6) errs.otp_admin = 'OTP must be 6 digits';
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -197,6 +274,9 @@ export default function Signup() {
         payload[`price_plan${i}`] = parseFloat(payload[`price_plan${i}`]);
       }
       await api.post('/signup', payload);
+      if (typeof addItem === 'function') {
+        addItem(payload.username);
+      }
       showToast('Account created successfully! Please log in.', 'success');
       navigate('/login');
     } catch (err) {
@@ -334,11 +414,15 @@ export default function Signup() {
               <div className="form-group">
                 <label className="form-label">Username *</label>
                 <input 
-                  className={`form-input ${errors.username ? 'error' : ''}`} 
+                  className={`form-input ${(errors.username || usernameBloomHit) ? 'error' : ''}`} 
                   value={form.username} 
-                  onChange={(e) => handleChange('username', e.target.value)} 
+                  onChange={(e) => {
+                    if (!usernameBloomTouched) setUsernameBloomTouched(true);
+                    handleChange('username', e.target.value);
+                  }} 
                   placeholder="admin_user" 
                 />
+                {usernameBloomHit && <div className="form-error">Username may already be taken</div>}
                 {errors.username && <div className="form-error">{errors.username}</div>}
               </div>
               <div className="form-group">
@@ -394,21 +478,29 @@ export default function Signup() {
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Company Email OTP *</label>
                 <input
-                  className={`form-input ${errors.otp_company ? 'error' : ''}`}
+                  className={`form-input ${(errors.otp_company || otpCompanyInvalid) ? 'error' : ''}`}
                   value={form.otp_company}
-                  onChange={(e) => handleChange('otp_company', e.target.value)}
+                  onChange={(e) => {
+                    if (!otpCompanyTouched) setOtpCompanyTouched(true);
+                    handleChange('otp_company', e.target.value);
+                  }}
                   placeholder="Enter company OTP"
                 />
+                {otpCompanyInvalid && <div className="form-error">OTP must be 6 digits</div>}
                 {errors.otp_company && <div className="form-error">{errors.otp_company}</div>}
               </div>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Admin Email OTP *</label>
                 <input
-                  className={`form-input ${errors.otp_admin ? 'error' : ''}`}
+                  className={`form-input ${(errors.otp_admin || otpAdminInvalid) ? 'error' : ''}`}
                   value={form.otp_admin}
-                  onChange={(e) => handleChange('otp_admin', e.target.value)}
+                  onChange={(e) => {
+                    if (!otpAdminTouched) setOtpAdminTouched(true);
+                    handleChange('otp_admin', e.target.value);
+                  }}
                   placeholder="Enter admin OTP"
                 />
+                {otpAdminInvalid && <div className="form-error">OTP must be 6 digits</div>}
                 {errors.otp_admin && <div className="form-error">{errors.otp_admin}</div>}
               </div>
               <button

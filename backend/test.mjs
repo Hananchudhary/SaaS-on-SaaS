@@ -10,7 +10,7 @@ let testClientId = null;
 let testUserId = null;
 
 const SystemCreds = {
-    email: process.env.SYSTEM_EMAIL || 'admin@saasplatform.com',
+    username: process.env.SYSTEM_USERNAME || 'admin',
     password: process.env.SYSTEM_PASSWORD || 'system_admin'
 };
 
@@ -40,16 +40,16 @@ async function sleep(ms) {
 
 async function login(creds) {
     const res = await axios.post(`${BASE_URL}/login`, {
-        email: creds.email,
+        username: creds.username,
         password: creds.password
     });
     return res.data?.data?.session_id;
 }
 
-async function loginFull(email, password) {
+async function loginFull(username, password) {
     try {
         const res = await axios.post(`${BASE_URL}/login`, {
-            email,
+            username,
             password
         });
         if (res.data?.success && res.data?.data?.session_id) {
@@ -70,18 +70,18 @@ async function loginFull(email, password) {
 
 async function findTestClient() {
     const testPasswords = COMMON_PASSWORDS;
-    const testEmails = [
-        'diana.miller@techcorp.com'
+    const testUsernames = [
+        'diana.miller'
     ];
-    log(`  Trying ${testEmails.length} emails with ${testPasswords.length} passwords each`);
-    for (const email of testEmails) {
+    log(`  Trying ${testUsernames.length} usernames with ${testPasswords.length} passwords each`);
+    for (const username of testUsernames) {
         for (const password of testPasswords) {
-            log(`  Trying ${email} with password...`);
+            log(`  Trying ${username} with password...`);
             try {
-                const data = await loginFull(email, password);
+                const data = await loginFull(username, password);
                 console.log(data);
                 if (data?.session_id) {
-                    log(`  ✓ Found: ${email}`);
+                    log(`  ✓ Found: ${username}`);
                     return data;
                 }
             } catch (e) {
@@ -190,7 +190,7 @@ async function testChangePassword() {
         });
 
         // Test login with new password
-        const newSessionId = await login({ email: SystemCreds.email, password: 'new_system_admin' });
+        const newSessionId = await login({ username: SystemCreds.username, password: 'new_system_admin' });
         if (newSessionId) {
             pass('Login with new password');
             
