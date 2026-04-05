@@ -5,10 +5,10 @@
 
 CREATE TABLE Client (
     client_id INT PRIMARY KEY AUTO_INCREMENT,
-    company_name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL,
+    company_name VARCHAR(100) NOT NULL,
+    email VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
-    address TEXT,
+    address VARCHAR(255),
     status ENUM('Active', 'Suspended', 'Inactive') NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
@@ -25,7 +25,7 @@ CREATE TABLE Plan (
     tier_2_users INT NOT NULL,
     tier_3_users INT NOT NULL,
     monthly_price DECIMAL(10,2) NOT NULL,
-    description TEXT,
+    description VARCHAR(300),
     
     CONSTRAINT fk_plan_client FOREIGN KEY (client_id) 
         REFERENCES Client(client_id) ON DELETE CASCADE,
@@ -42,10 +42,10 @@ CREATE TABLE Plan (
 CREATE TABLE Customer (
     customer_id INT PRIMARY KEY AUTO_INCREMENT,
     client_id INT NOT NULL,
-    company_name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL,
+    company_name VARCHAR(100) NOT NULL,
+    email VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
-    address TEXT,
+    address VARCHAR(255),
     registration_date DATE NOT NULL DEFAULT (CURRENT_DATE),
     status ENUM('Active', 'Inactive', 'Suspended') NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -61,9 +61,9 @@ CREATE TABLE Customer (
 CREATE TABLE User (
     user_id INT PRIMARY KEY AUTO_INCREMENT,
     client_id INT NOT NULL, 
-    username VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(80) NOT NULL,
     tier_level INT NOT NULL,
     status ENUM('Active', 'Inactive', 'Suspended') NOT NULL DEFAULT 'Active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -175,7 +175,7 @@ CREATE TABLE AccessLog (
     log_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     action ENUM('INSERT', 'UPDATE', 'DELETE', 'SELECT', 'SHOW', 'DESCRIBE') NOT NULL,
-    table_name VARCHAR(100) NOT NULL,
+    table_name VARCHAR(15) NOT NULL,
     timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status ENUM('Success', 'Failure') NOT NULL,
     
@@ -210,22 +210,26 @@ CREATE INDEX idx_plan_client ON Plan(client_id);
 
 CREATE INDEX idx_customer_client ON Customer(client_id);
 
-CREATE INDEX idx_user_client ON User(client_id, username);
-CREATE INDEX idx_user_created_by ON User(created_by);
+CREATE INDEX idx_user ON User(email);
+CREATE INDEX idx_user_client ON User(client_id, status);
 
-CREATE INDEX idx_subscription_client ON Subscription(client_id);
-CREATE INDEX idx_subscription_customer ON Subscription(customer_id);
-CREATE INDEX idx_subscription_dates ON Subscription(status, end_date);
+CREATE INDEX idx_subscription_client ON Subscription(client_id, status);
+CREATE INDEX idx_subscription_customer ON Subscription(customer_id, status);
+CREATE INDEX idx_subscription_plan ON Subscription(plan_id, client_id);
 
-CREATE INDEX idx_invoice_subscription ON Invoice(subscription_id);
-CREATE INDEX idx_invoice_dates ON Invoice(status, due_date);
+CREATE INDEX idx_invoice_subscription ON Invoice(subscription_id, status, invoice_date);
+CREATE INDEX idx_invoice_dates ON Invoice(status, due_date, subscription_id);
 
 CREATE INDEX idx_payment_invoice ON Payment(invoice_id);
 CREATE INDEX idx_payment_date ON Payment(payment_date);
 
-CREATE INDEX idx_penalty_applied ON OverduePenalty(applied);
+CREATE INDEX idx_penalty_applied ON OverduePenalty(invoice_id, applied, created_at);
 CREATE INDEX idx_penalty_date ON OverduePenalty(penalty_date);
 
+CREATE INDEX idx_access_log ON AccessLog(user_id);
+CREATE INDEX idx_access_table ON AccessLog(user_id, table_name);
+
+CREATE INDEX idx_active_clients ON Client(status);
 
 DELIMITER $$
 
@@ -850,66 +854,93 @@ END$$
 
 DELIMITER ;
 
-CREATE VIEW ActiveSubscriptions AS
-SELECT 
-    s.subscription_id,
-    cl.client_id,
-    cl.company_name AS client_company,
-    cu.customer_id,
-    cu.company_name AS customer_company,
-    p.plan_name,
-    p.monthly_price,
-    s.start_date,
-    s.end_date,
-    s.auto_renew,
-    DATEDIFF(s.end_date, CURDATE()) AS days_remaining,
-    CASE 
-        WHEN s.end_date IS NULL THEN 'No end date'
-        WHEN s.end_date > CURDATE() THEN 'Active'
-        WHEN s.end_date <= CURDATE() THEN 'Expired'
-    END AS subscription_status
-FROM Subscription s
-JOIN Client cl ON s.client_id = cl.client_id
-LEFT JOIN Customer cu ON s.customer_id = cu.customer_id
-JOIN Plan p ON s.plan_id = p.plan_id
-WHERE s.status = 'Active'
-  AND cl.client_id > 1;
+CREATE VIEW ClientUserStats AS
+SELECT
+    u.client_id,
+    COUNT(*) AS total_users,
+    SUM(CASE WHEN u.tier_level = 1 THEN 1 ELSE 0 END) AS tier_1_count,
+    SUM(CASE WHEN u.tier_level = 2 THEN 1 ELSE 0 END) AS tier_2_count,
+    SUM(CASE WHEN u.tier_level = 3 THEN 1 ELSE 0 END) AS tier_3_count,
+    SUM(CASE WHEN u.status = 'Active' THEN 1 ELSE 0 END) AS active_users
+FROM User u
+WHERE u.client_id > 1
+GROUP BY u.client_id;
 
+CREATE VIEW ClientActiveSessions AS
+SELECT
+    u.client_id,
+    COUNT(*) AS active_sessions
+FROM UserSession us
+JOIN User u ON us.user_id = u.user_id
+WHERE us.logout_time IS NULL
+  AND u.client_id > 1
+GROUP BY u.client_id;
 
-CREATE VIEW OverdueInvoicesWithPenalty AS
-SELECT 
-    i.invoice_id,
-    cl.client_id,
-    cl.company_name AS client_company,
-    cu.company_name AS customer_company,
-    i.invoice_date,
-    i.due_date,
-    i.amount,
-    i.paid_amount,
-    i.amount - i.paid_amount AS unpaid_amount,
-    DATEDIFF(CURDATE(), i.due_date) AS days_overdue,
-    ROUND(
-        (i.amount - i.paid_amount) * 0.01 *
-        GREATEST(DATEDIFF(CURDATE(), i.due_date), 0),
-        2
-    ) AS current_penalty,
-    i.status,
-    EXISTS (
-        SELECT 1 
-        FROM OverduePenalty op 
-        WHERE op.invoice_id = i.invoice_id 
-          AND op.applied = TRUE
-    ) AS has_applied_penalty
-FROM Invoice i
-JOIN Subscription s ON i.subscription_id = s.subscription_id
-JOIN Client cl ON s.client_id = cl.client_id
-LEFT JOIN Customer cu ON s.customer_id = cu.customer_id
-WHERE (
-        i.status = 'Overdue'
-        OR (i.status = 'Pending' AND i.due_date < CURDATE())
-      )
-  AND cl.client_id > 1;
-
+CREATE VIEW ClientStorageStats AS
+SELECT
+    c.client_id,
+    COALESCE(cc.client_count, 0) AS client_count,
+    COALESCE(cu.customer_count, 0) AS customer_count,
+    COALESCE(u.user_count, 0) AS user_count,
+    COALESCE(pl.plan_count, 0) AS plan_count,
+    COALESCE(s.subscription_count, 0) AS subscription_count,
+    COALESCE(i.invoice_count, 0) AS invoice_count,
+    COALESCE(p.payment_count, 0) AS payment_count,
+    COALESCE(al.accesslog_count, 0) AS accesslog_count,
+    COALESCE(op.overduepenalty_count, 0) AS overduepenalty_count
+FROM Client c
+LEFT JOIN (
+    SELECT client_id, COUNT(*) AS customer_count
+    FROM Customer
+    GROUP BY client_id
+) cu ON cu.client_id = c.client_id
+LEFT JOIN (
+    SELECT client_id, COUNT(*) AS user_count
+    FROM User
+    GROUP BY client_id
+) u ON u.client_id = c.client_id
+LEFT JOIN (
+    SELECT client_id, COUNT(*) AS plan_count
+    FROM Plan
+    GROUP BY client_id
+) pl ON pl.client_id = c.client_id
+LEFT JOIN (
+    SELECT client_id, COUNT(*) AS subscription_count
+    FROM Subscription
+    GROUP BY client_id
+) s ON s.client_id = c.client_id
+LEFT JOIN (
+    SELECT s.client_id, COUNT(*) AS invoice_count
+    FROM Invoice i
+    JOIN Subscription s ON i.subscription_id = s.subscription_id
+    GROUP BY s.client_id
+) i ON i.client_id = c.client_id
+LEFT JOIN (
+    SELECT s.client_id, COUNT(*) AS payment_count
+    FROM Payment p
+    JOIN Invoice i ON p.invoice_id = i.invoice_id
+    JOIN Subscription s ON i.subscription_id = s.subscription_id
+    GROUP BY s.client_id
+) p ON p.client_id = c.client_id
+LEFT JOIN (
+    SELECT u.client_id, COUNT(*) AS accesslog_count
+    FROM AccessLog al
+    JOIN User u ON al.user_id = u.user_id
+    GROUP BY u.client_id
+) al ON al.client_id = c.client_id
+LEFT JOIN (
+    SELECT s.client_id, COUNT(*) AS overduepenalty_count
+    FROM OverduePenalty op
+    JOIN Invoice i ON op.invoice_id = i.invoice_id
+    JOIN Subscription s ON i.subscription_id = s.subscription_id
+    GROUP BY s.client_id
+) op ON op.client_id = c.client_id
+LEFT JOIN (
+    SELECT COUNT(*) AS client_count
+    FROM Client
+    WHERE client_id > 1
+) cc ON 1 = 1
+WHERE c.client_id > 1;
 
 ALTER TABLE Client AUTO_INCREMENT = 2;
 

@@ -181,42 +181,50 @@ const getStatics = async (req, res) => {
 
             await connection.query('SET @current_user_id = ?', [session.user_id]);
             
-            let activeSessions;
-            if(clientId !==1){
+            let activeSessions = [{ active_session_count: 0 }];
+            let userCounts = [{
+                total_users: 0,
+                tier_1_count: 0,
+                tier_2_count: 0,
+                tier_3_count: 0,
+                active_users: 0
+            }];
+
+            if (clientId !== 1) {
                 [activeSessions] = await connection.query(
-                `SELECT COUNT(*) as active_session_count FROM UserSession us 
-                 WHERE us.user_id IN(SELECT u.user_id FROM User u WHERE u.client_id = ?)
-                 AND us.logout_time IS NULL`,
-                [clientId]
+                    `SELECT COALESCE(active_sessions, 0) as active_session_count
+                     FROM ClientActiveSessions
+                     WHERE client_id = ?`,
+                    [clientId]
                 );
-            }
-            else{
+
+                [userCounts] = await connection.query(
+                    `SELECT 
+                        COALESCE(total_users, 0) as total_users,
+                        COALESCE(tier_1_count, 0) as tier_1_count,
+                        COALESCE(tier_2_count, 0) as tier_2_count,
+                        COALESCE(tier_3_count, 0) as tier_3_count,
+                        COALESCE(active_users, 0) as active_users
+                     FROM ClientUserStats
+                     WHERE client_id = ?`,
+                    [clientId]
+                );
+            } else {
                 [activeSessions] = await connection.query(
-                `SELECT COUNT(*) as active_session_count FROM UserSession us 
-                 WHERE us.logout_time IS NULL`);
-            }
-            let userCounts;
-            if(clientId !==1){
-                [userCounts] = await connection.query(
-                `SELECT 
-                    COUNT(*) as total_users,
-                    SUM(CASE WHEN tier_level = 1 THEN 1 ELSE 0 END) as tier_1_count,
-                    SUM(CASE WHEN tier_level = 2 THEN 1 ELSE 0 END) as tier_2_count,
-                    SUM(CASE WHEN tier_level = 3 THEN 1 ELSE 0 END) as tier_3_count,
-                    SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_users
-                 FROM User WHERE client_id = ?`,
-                [clientId]
+                    `SELECT COALESCE(SUM(active_sessions), 0) as active_session_count
+                     FROM ClientActiveSessions`,
+                    []
                 );
-            }
-            else{
                 [userCounts] = await connection.query(
-                `SELECT 
-                    COUNT(*) as total_users,
-                    SUM(CASE WHEN tier_level = 1 THEN 1 ELSE 0 END) as tier_1_count,
-                    SUM(CASE WHEN tier_level = 2 THEN 1 ELSE 0 END) as tier_2_count,
-                    SUM(CASE WHEN tier_level = 3 THEN 1 ELSE 0 END) as tier_3_count,
-                    SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_users
-                 FROM User`);
+                    `SELECT 
+                        COALESCE(SUM(total_users), 0) as total_users,
+                        COALESCE(SUM(tier_1_count), 0) as tier_1_count,
+                        COALESCE(SUM(tier_2_count), 0) as tier_2_count,
+                        COALESCE(SUM(tier_3_count), 0) as tier_3_count,
+                        COALESCE(SUM(active_users), 0) as active_users
+                     FROM ClientUserStats`,
+                    []
+                );
             }
             let planLimits = [];
             if (clientId !== 1) {
@@ -239,19 +247,53 @@ const getStatics = async (req, res) => {
                 planLimits = clientPlans;
             }
 
-            const storageQueries = [
-                { table: 'Customer', query: 'SELECT COUNT(*) as count FROM Customer WHERE client_id = ?' },
-                { table: 'User', query: 'SELECT COUNT(*) as count FROM User WHERE client_id = ?' },
-                { table: 'Subscription', query: 'SELECT COUNT(*) as count FROM Subscription WHERE client_id = ?' },
-                { table: 'Invoice', query: 'SELECT COUNT(*) as count FROM Invoice i JOIN Subscription s ON i.subscription_id = s.subscription_id WHERE s.client_id = ?' },
-                { table: 'Payment', query: 'SELECT COUNT(*) as count FROM Payment p JOIN Invoice i ON p.invoice_id = i.invoice_id JOIN Subscription s ON i.subscription_id = s.subscription_id WHERE s.client_id = ?' },
-                { table: 'AccessLog', query: 'SELECT COUNT(*) as count FROM AccessLog al JOIN User u ON al.user_id = u.user_id WHERE u.client_id = ?' }
-            ];
-
             let storage = 0;
-            for (const item of storageQueries) {
-                const [result] = await connection.query(item.query, [clientId]);
-                storage += (result[0].count || 0) * 100; // Simplified storage estimation
+            if (clientId !== 1) {
+                const [storageRow] = await connection.query(
+                    `SELECT 
+                        customer_count,
+                        user_count,
+                        subscription_count,
+                        invoice_count,
+                        payment_count,
+                        accesslog_count
+                     FROM ClientStorageStats
+                     WHERE client_id = ?`,
+                    [clientId]
+                );
+                const s = storageRow?.[0] || {};
+                storage =
+                    (s.customer_count || 0) * 1.736 +
+                    (s.user_count || 0) * 0.641 +
+                    (s.subscription_count || 0) * 0.048 +
+                    (s.invoice_count || 0) * 0.054 +
+                    (s.payment_count || 0) * 0.048 +
+                    (s.accesslog_count || 0) * 0.098 +
+                    (s.plan_count || 0) * 1.645 +
+                    (s.overdue_count || 0) * 0.036;
+            } else {
+                const [storageRow] = await connection.query(
+                    `SELECT 
+                        COALESCE(SUM(customer_count), 0) as customer_count,
+                        COALESCE(SUM(user_count), 0) as user_count,
+                        COALESCE(SUM(subscription_count), 0) as subscription_count,
+                        COALESCE(SUM(invoice_count), 0) as invoice_count,
+                        COALESCE(SUM(payment_count), 0) as payment_count,
+                        COALESCE(SUM(accesslog_count), 0) as accesslog_count
+                     FROM ClientStorageStats`,
+                    []
+                );
+                const s = storageRow?.[0] || {};
+                storage =
+                    (s.customer_count || 0) * 1.736 +
+                    (s.user_count || 0) * 0.641 +
+                    (s.subscription_count || 0) * 0.048 +
+                    (s.invoice_count || 0) * 0.054 +
+                    (s.payment_count || 0) * 0.048 +
+                    (s.accesslog_count || 0) * 0.098 +
+                    (s.client_count || 0) * 1.729 +
+                    (s.plan_count || 0) * 1.645 +
+                    (s.overdue_count || 0) * 0.036;
             }
 
             await connection.query(

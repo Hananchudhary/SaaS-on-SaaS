@@ -55,10 +55,11 @@ export default function Dashboard() {
     subscribed: Number(p.subscribed) || 0,
   }));
 
-  const formatStorage = (bytes) => {
-    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${bytes} B`;
+  const formatStorage = (kilobytes) => {
+    const kb = Number(kilobytes || 0);
+    if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)} GB`;
+    if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`;
+    return `${kb.toFixed(1)} KB`;
   };
 
   return (
