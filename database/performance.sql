@@ -1,6 +1,6 @@
-
 USE saas_db;
 
+-- Refresh table stats for fair EXPLAIN ANALYZE
 ANALYZE TABLE Client;
 ANALYZE TABLE Plan;
 ANALYZE TABLE Customer;
@@ -9,89 +9,300 @@ ANALYZE TABLE Subscription;
 ANALYZE TABLE Invoice;
 ANALYZE TABLE Payment;
 ANALYZE TABLE OverduePenalty;
+ANALYZE TABLE AccessLog;
+ANALYZE TABLE UserSession;
 
-SELECT 
-    TABLE_NAME,
-    INDEX_NAME,
-    COLUMN_NAME,
-    SEQ_IN_INDEX
-FROM INFORMATION_SCHEMA.STATISTICS
-WHERE TABLE_SCHEMA = 'saas_db'
-ORDER BY TABLE_NAME, INDEX_NAME;
+-- Index inventory (for reference)
+SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'saas_db' ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;
 
--- 1.1 BEFORE INDEXING (Ignore the index)
+-- ============================================================
+-- INDEX PERFORMANCE: BEFORE vs AFTER (EXPLAIN + elapsed time + delta)
+-- ============================================================
+
+-- Plan.idx_plan_client
 EXPLAIN ANALYZE
-SELECT invoice_id, invoice_date, due_date, amount, paid_amount, status
-FROM Invoice IGNORE INDEX (idx_invoice_dates)
-WHERE status = 'Overdue'
-  AND due_date < '2024-04-01'
-ORDER BY due_date;
+SELECT * FROM Plan IGNORE INDEX (idx_plan_client) WHERE client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Plan IGNORE INDEX (idx_plan_client) WHERE client_id = 2 LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
 
--- 1.2 AFTER INDEXING (Let MySQL use the index)
 EXPLAIN ANALYZE
-SELECT invoice_id, invoice_date, due_date, amount, paid_amount, status
-FROM Invoice
-WHERE status = 'Overdue'
-  AND due_date < '2024-04-01'
-ORDER BY due_date;
+SELECT * FROM Plan WHERE client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Plan WHERE client_id = 2 LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
 
--- 2.1 BEFORE INDEXING
+-- Customer.idx_customer_client
 EXPLAIN ANALYZE
-SELECT subscription_id, client_id, customer_id, plan_id, end_date
-FROM Subscription IGNORE INDEX (idx_subscription_dates)
-WHERE status = 'Active'
-  AND end_date BETWEEN '2024-04-01' AND '2024-04-30';
+SELECT * FROM Customer IGNORE INDEX (idx_customer_client) WHERE client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Customer IGNORE INDEX (idx_customer_client) WHERE client_id = 2 LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
 
--- 2.2 AFTER INDEXING
 EXPLAIN ANALYZE
-SELECT subscription_id, client_id, customer_id, plan_id, end_date
-FROM Subscription
-WHERE status = 'Active'
-  AND end_date BETWEEN '2024-04-01' AND '2024-04-30';
+SELECT * FROM Customer WHERE client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Customer WHERE client_id = 2 LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
 
--- 3.1 BEFORE INDEXING
+-- User.idx_user
 EXPLAIN ANALYZE
-SELECT customer_id, company_name, email, status
-FROM Customer IGNORE INDEX (idx_customer_client)
-WHERE client_id = 2
-  AND status = 'Active';
+SELECT * FROM User IGNORE INDEX (idx_user) WHERE username = 'john.doe' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User IGNORE INDEX (idx_user) WHERE username = 'john.doe' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
 
--- 3.2 AFTER INDEXING
 EXPLAIN ANALYZE
-SELECT customer_id, company_name, email, status
-FROM Customer
-WHERE client_id = 2
-  AND status = 'Active';
+SELECT * FROM User WHERE username = 'john.doe' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User WHERE username = 'john.doe' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
 
--- 4.1 BEFORE INDEXING
+-- User.idx_user_client
 EXPLAIN ANALYZE
-SELECT payment_id, payment_date, amount, payment_method
-FROM Payment IGNORE INDEX (idx_payment_invoice, idx_payment_date)
-WHERE invoice_id = 1001
-  AND payment_date BETWEEN '2024-01-01' AND '2024-03-31'
-  AND status = 'Success';
+SELECT * FROM User IGNORE INDEX (idx_user_client) WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User IGNORE INDEX (idx_user_client) WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
 
--- 4.2 AFTER INDEXING
 EXPLAIN ANALYZE
-SELECT payment_id, payment_date, amount, payment_method
-FROM Payment
-WHERE invoice_id = 1001
-  AND payment_date BETWEEN '2024-01-01' AND '2024-03-31'
-  AND status = 'Success';
+SELECT * FROM User WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
 
-
--- 5.1 BEFORE INDEXING
+-- Subscription.idx_subscription_client
 EXPLAIN ANALYZE
-SELECT penalty_id, invoice_id, penalty_date
-FROM OverduePenalty IGNORE INDEX (idx_penalty_applied, idx_penalty_date)
-WHERE applied = FALSE
-  AND penalty_date >= '2024-03-01'
-ORDER BY penalty_date;
+SELECT * FROM Subscription IGNORE INDEX (idx_subscription_client) WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription IGNORE INDEX (idx_subscription_client) WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
 
--- 5.2 AFTER INDEXING
 EXPLAIN ANALYZE
-SELECT penalty_id, invoice_id, penalty_date
-FROM OverduePenalty
-WHERE applied = FALSE
-  AND penalty_date >= '2024-03-01'
-ORDER BY penalty_date;
+SELECT * FROM Subscription WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription WHERE client_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Subscription.idx_subscription_customer
+EXPLAIN ANALYZE
+SELECT * FROM Subscription IGNORE INDEX (idx_subscription_customer) WHERE customer_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription IGNORE INDEX (idx_subscription_customer) WHERE customer_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Subscription WHERE customer_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription WHERE customer_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Subscription.idx_subscription_plan
+EXPLAIN ANALYZE
+SELECT * FROM Subscription IGNORE INDEX (idx_subscription_plan) WHERE plan_id = 2 AND client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription IGNORE INDEX (idx_subscription_plan) WHERE plan_id = 2 AND client_id = 2 LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Subscription WHERE plan_id = 2 AND client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Subscription WHERE plan_id = 2 AND client_id = 2 LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Invoice.idx_invoice_subscription
+EXPLAIN ANALYZE
+SELECT * FROM Invoice IGNORE INDEX (idx_invoice_subscription) WHERE subscription_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Invoice IGNORE INDEX (idx_invoice_subscription) WHERE subscription_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Invoice WHERE subscription_id = 2 AND status = 'Active' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Invoice WHERE subscription_id = 2 AND status = 'Active' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Invoice.idx_invoice_dates
+EXPLAIN ANALYZE
+SELECT * FROM Invoice IGNORE INDEX (idx_invoice_dates) WHERE status = 'Active' AND due_date < '2024-04-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Invoice IGNORE INDEX (idx_invoice_dates) WHERE status = 'Active' AND due_date < '2024-04-01' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Invoice WHERE status = 'Active' AND due_date < '2024-04-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Invoice WHERE status = 'Active' AND due_date < '2024-04-01' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Payment.idx_payment_date
+EXPLAIN ANALYZE
+SELECT * FROM Payment IGNORE INDEX (idx_payment_date) WHERE payment_date >= '2024-02-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Payment IGNORE INDEX (idx_payment_date) WHERE payment_date >= '2024-02-01' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Payment WHERE payment_date >= '2024-02-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Payment WHERE payment_date >= '2024-02-01' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- OverduePenalty.idx_penalty_applied
+EXPLAIN ANALYZE
+SELECT * FROM OverduePenalty IGNORE INDEX (idx_penalty_applied) WHERE invoice_id = 2 AND applied = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM OverduePenalty IGNORE INDEX (idx_penalty_applied) WHERE invoice_id = 2 AND applied = 2 LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM OverduePenalty WHERE invoice_id = 2 AND applied = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM OverduePenalty WHERE invoice_id = 2 AND applied = 2 LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- OverduePenalty.idx_penalty_date
+EXPLAIN ANALYZE
+SELECT * FROM OverduePenalty IGNORE INDEX (idx_penalty_date) WHERE penalty_date >= '2024-03-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM OverduePenalty IGNORE INDEX (idx_penalty_date) WHERE penalty_date >= '2024-03-01' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM OverduePenalty WHERE penalty_date >= '2024-03-01' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM OverduePenalty WHERE penalty_date >= '2024-03-01' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Client.unq_client_email
+EXPLAIN ANALYZE
+SELECT * FROM Client IGNORE INDEX (unq_client_email) WHERE email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Client IGNORE INDEX (unq_client_email) WHERE email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Client WHERE email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Client WHERE email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Plan.unq_plan_name_per_client
+EXPLAIN ANALYZE
+SELECT * FROM Plan IGNORE INDEX (unq_plan_name_per_client) WHERE plan_name = 2 AND client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Plan IGNORE INDEX (unq_plan_name_per_client) WHERE plan_name = 2 AND client_id = 2 LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Plan WHERE plan_name = 2 AND client_id = 2 LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Plan WHERE plan_name = 2 AND client_id = 2 LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- Customer.unq_customer_email_per_client
+EXPLAIN ANALYZE
+SELECT * FROM Customer IGNORE INDEX (unq_customer_email_per_client) WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Customer IGNORE INDEX (unq_customer_email_per_client) WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM Customer WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM Customer WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- User.unq_user_email
+EXPLAIN ANALYZE
+SELECT * FROM User IGNORE INDEX (unq_user_email) WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User IGNORE INDEX (unq_user_email) WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM User WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User WHERE client_id = 2 AND email = 'info@techcorp.com' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- User.unq_username_per_client
+EXPLAIN ANALYZE
+SELECT * FROM User IGNORE INDEX (unq_username_per_client) WHERE username = 'john.doe' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User IGNORE INDEX (unq_username_per_client) WHERE username = 'john.doe' LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM User WHERE username = 'john.doe' LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM User WHERE username = 'john.doe' LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;
+
+-- UserSession.chk_duplicatae_user
+EXPLAIN ANALYZE
+SELECT * FROM UserSession IGNORE INDEX (chk_duplicatae_user) WHERE user_id = 2 AND logout_time IS NULL LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM UserSession IGNORE INDEX (chk_duplicatae_user) WHERE user_id = 2 AND logout_time IS NULL LIMIT 100;
+SET @elapsed_us_before = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_before AS elapsed_us_before;
+
+EXPLAIN ANALYZE
+SELECT * FROM UserSession WHERE user_id = 2 AND logout_time IS NULL LIMIT 100;
+SET @t_start = NOW(6);
+SELECT SQL_NO_CACHE * FROM UserSession WHERE user_id = 2 AND logout_time IS NULL LIMIT 100;
+SET @elapsed_us_after = TIMESTAMPDIFF(MICROSECOND, @t_start, NOW(6));
+SELECT @elapsed_us_after AS elapsed_us_after;
+SELECT (@elapsed_us_after - @elapsed_us_before) AS elapsed_us_delta;

@@ -6,7 +6,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../config.env') });
 
 const { ErrorCodes, createErrorResponse } = require('../middleware/error_handling.js');
 
-const TTL = 30 * 1000;
+const TTL = (process.env.OTP_VALIDITY || 30) * 1000;
 const SALT_ROUNDS = 10;
 
 const crypto = require('crypto');

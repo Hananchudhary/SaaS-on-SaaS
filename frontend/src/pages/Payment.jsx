@@ -10,14 +10,17 @@ export default function Payment() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [amount, setAmount] = useState('');
+  const [amountEdited, setAmountEdited] = useState(false);
 
   const fetchBilling = async () => {
     setLoading(true);
     try {
       const res = await api.get('/pay');
       setBilling(res.data);
-      const total = (res.data.plan_amount || 0) + (res.data.overdue_fine || 0);
-      setAmount(total.toFixed(2));
+      if (!amountEdited) {
+        const total = (res.data.plan_amount || 0) + (res.data.overdue_fine || 0);
+        setAmount(total.toFixed(2));
+      }
     } catch (err) {
       const msg = err.response?.data?.error?.message || 'Failed to load billing info';
       showToast(msg, 'error');
@@ -104,7 +107,13 @@ export default function Payment() {
                 min="0.01"
                 className="form-input"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onFocus={() => {
+                  if (!amountEdited) setAmountEdited(true);
+                }}
+                onChange={(e) => {
+                  if (!amountEdited) setAmountEdited(true);
+                  setAmount(e.target.value);
+                }}
                 placeholder="0.00"
               />
             </div>

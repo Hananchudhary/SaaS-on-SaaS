@@ -210,7 +210,7 @@ CREATE INDEX idx_plan_client ON Plan(client_id);
 
 CREATE INDEX idx_customer_client ON Customer(client_id);
 
-CREATE INDEX idx_user ON User(email);
+CREATE INDEX idx_user ON User(username);
 CREATE INDEX idx_user_client ON User(client_id, status);
 
 CREATE INDEX idx_subscription_client ON Subscription(client_id, status);
@@ -220,16 +220,10 @@ CREATE INDEX idx_subscription_plan ON Subscription(plan_id, client_id);
 CREATE INDEX idx_invoice_subscription ON Invoice(subscription_id, status, invoice_date);
 CREATE INDEX idx_invoice_dates ON Invoice(status, due_date, subscription_id);
 
-CREATE INDEX idx_payment_invoice ON Payment(invoice_id);
 CREATE INDEX idx_payment_date ON Payment(payment_date);
 
 CREATE INDEX idx_penalty_applied ON OverduePenalty(invoice_id, applied, created_at);
 CREATE INDEX idx_penalty_date ON OverduePenalty(penalty_date);
-
-CREATE INDEX idx_access_log ON AccessLog(user_id);
-CREATE INDEX idx_access_table ON AccessLog(user_id, table_name);
-
-CREATE INDEX idx_active_clients ON Client(status);
 
 DELIMITER $$
 

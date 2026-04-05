@@ -1,0 +1,1058 @@
+openapi: 3.0.3
+info:
+  title: SaaS-on-SaaS Backend API
+  description: Multi-tenant SaaS platform with SQL editor capabilities
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration endpoints
+  - name: Configuration
+    description: System configuration and plan management
+  - name: Information
+    description: Database information and statistics
+  - name: Payment
+    description: Subscription payment management
+  - name: SQL Editor
+    description: SQL query execution and data export
+  - name: Health
+    description: System health checks
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and create a session
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: User's username
+                  example: admin_user
+                password:
+                  type: string
+                  description: User's password
+                  format: password
+                  example: password123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      session_id:
+                        type: integer
+                        example: 12345
+                      username:
+                        type: string
+                        example: admin_user
+                      tier_level:
+                        type: integer
+                        example: 1
+                      client_id:
+                        type: integer
+                        example: 1
+                      user_id:
+                        type: integer
+                        example: 1
+                      warning:
+                        type: string
+                        description: Warning if editor access is disabled
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid credentials or inactive account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: End user session
+      operationId: logout
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login response
+          schema:
+            type: integer
+            example: 12345
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Register new client
+      description: Create new client account with subscription plans and admin user
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company_name
+                - email
+                - plan_id
+                - plan_name1
+                - tier1_users_plan1
+                - tier2_users_plan1
+                - tier3_users_plan1
+                - price_plan1
+                - plan_name2
+                - tier1_users_plan2
+                - tier2_users_plan2
+                - tier3_users_plan2
+                - price_plan2
+                - plan_name3
+                - tier1_users_plan3
+                - tier2_users_plan3
+                - tier3_users_plan3
+                - price_plan3
+                - username
+                - admin_email
+                - password
+                - otp_company
+                - otp_admin
+              properties:
+                company_name:
+                  type: string
+                  description: Company name
+                  example: Acme Corp
+                email:
+                  type: string
+                  format: email
+                  description: Company contact email
+                  example: contact@acme.com
+                phone:
+                  type: string
+                  description: Company phone number
+                  example: "+1234567890"
+                address:
+                  type: string
+                  description: Company address
+                  example: "123 Main St, City, Country"
+                plan_id:
+                  type: integer
+                  description: Selected plan ID from system plans
+                  example: 1
+                plan_name1:
+                  type: string
+                  description: Custom plan 1 name
+                  example: Basic Plan
+                tier1_users_plan1:
+                  type: integer
+                  description: Number of tier 1 users for plan 1
+                  example: 5
+                tier2_users_plan1:
+                  type: integer
+                  description: Number of tier 2 users for plan 1
+                  example: 3
+                tier3_users_plan1:
+                  type: integer
+                  description: Number of tier 3 users for plan 1
+                  example: 2
+                price_plan1:
+                  type: number
+                  format: double
+                  description: Monthly price for plan 1
+                  example: 29.99
+                plan_name2:
+                  type: string
+                  description: Custom plan 2 name
+                  example: Pro Plan
+                tier1_users_plan2:
+                  type: integer
+                  description: Number of tier 1 users for plan 2
+                  example: 10
+                tier2_users_plan2:
+                  type: integer
+                  description: Number of tier 2 users for plan 2
+                  example: 5
+                tier3_users_plan2:
+                  type: integer
+                  description: Number of tier 3 users for plan 2
+                  example: 3
+                price_plan2:
+                  type: number
+                  format: double
+                  description: Monthly price for plan 2
+                  example: 59.99
+                plan_name3:
+                  type: string
+                  description: Custom plan 3 name
+                  example: Enterprise Plan
+                tier1_users_plan3:
+                  type: integer
+                  description: Number of tier 1 users for plan 3
+                  example: 20
+                tier2_users_plan3:
+                  type: integer
+                  description: Number of tier 2 users for plan 3
+                  example: 10
+                tier3_users_plan3:
+                  type: integer
+                  description: Number of tier 3 users for plan 3
+                  example: 5
+                price_plan3:
+                  type: number
+                  format: double
+                  description: Monthly price for plan 3
+                  example: 99.99
+                username:
+                  type: string
+                  description: Admin username
+                  example: admin
+                admin_email:
+                  type: string
+                  format: email
+                  description: Admin email address
+                  example: admin@acme.com
+                password:
+                  type: string
+                  format: password
+                  description: Admin password
+                  example: securePassword123
+                otp_company:
+                  type: string
+                  description: OTP sent to company email
+                  example: "123456"
+                otp_admin:
+                  type: string
+                  description: OTP sent to admin email
+                  example: "654321"
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: Missing fields or invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '406':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - email or username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
+
+  /auth/signup/request-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Request OTP for signup
+      description: Generate and send OTPs to company and admin email addresses
+      operationId: requestOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company_email
+                - admin_email
+              properties:
+                company_email:
+                  type: string
+                  format: email
+                  description: Company email for OTP verification
+                  example: contact@acme.com
+                admin_email:
+                  type: string
+                  format: email
+                  description: Admin email for OTP verification
+                  example: admin@acme.com
+      responses:
+        '200':
+          description: OTP generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
+
+  /auth/change-password:
+    post:
+      tags:
+        - Authentication
+      summary: Change user password
+      description: Update password for authenticated user
+      operationId: changePassword
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - old_password
+                - new_password
+                - confirm_password
+              properties:
+                old_password:
+                  type: string
+                  format: password
+                  description: Current password
+                  example: oldPassword123
+                new_password:
+                  type: string
+                  format: password
+                  description: New password
+                  example: newPassword456
+                confirm_password:
+                  type: string
+                  format: password
+                  description: Confirm new password
+                  example: newPassword456
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: Missing fields or passwords don't match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid session or incorrect current password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /config/system-plans:
+    get:
+      tags:
+        - Configuration
+      summary: Get system subscription plans
+      description: Retrieve available subscription plans from configuration
+      operationId: getSystemPlans
+      responses:
+        '200':
+          description: Plans retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      plans:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            name:
+                              type: string
+                              example: Starter
+                            price:
+                              type: number
+                              format: double
+                              example: 9.99
+                            description:
+                              type: string
+                              example: Basic features
+                            tier_1_users:
+                              type: integer
+                              example: 5
+                            tier_2_users:
+                              type: integer
+                              example: 3
+                            tier_3_users:
+                              type: integer
+                              example: 2
+                            client_id:
+                              type: integer
+                              example: 1
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security: []
+
+  /info/tables:
+    get:
+      tags:
+        - Information
+      summary: Get database tables
+      description: Retrieve all accessible tables with columns and data for the client
+      operationId: getTables
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      responses:
+        '200':
+          description: Tables retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      tables:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            table_name:
+                              type: string
+                              example: Customer
+                            columns:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  name:
+                                    type: string
+                                    example: customer_id
+                                  data_type:
+                                    type: string
+                                    example: int
+                                  nullable:
+                                    type: boolean
+                                    example: false
+                                  is_primary:
+                                    type: boolean
+                                    example: true
+                            row_count:
+                              type: integer
+                              example: 100
+                            data:
+                              type: array
+                              description: Sample data rows
+        '400':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+  /info/statics:
+    get:
+      tags:
+        - Information
+      summary: Get client statistics
+      description: Retrieve usage statistics including users, sessions, storage, and plan limits
+      operationId: getStatics
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      active_sessions:
+                        type: integer
+                        example: 5
+                      users:
+                        type: object
+                        properties:
+                          total_users:
+                            type: integer
+                            example: 10
+                          tier_1_count:
+                            type: integer
+                            example: 5
+                          tier_2_count:
+                            type: integer
+                            example: 3
+                          tier_3_count:
+                            type: integer
+                            example: 2
+                          active_users:
+                            type: integer
+                            example: 8
+                      plans:
+                        type: object
+                        properties:
+                          plans:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                plan_id:
+                                  type: integer
+                                plan_name:
+                                  type: string
+                                subscribed:
+                                  type: integer
+                      storage:
+                        type: number
+                        format: double
+                        description: Storage usage in MB
+                        example: 125.5
+        '400':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+  /payment/pay:
+    get:
+      tags:
+        - Payment
+      summary: Get payment details
+      description: Retrieve current payment information including plan amount and overdue fines
+      operationId: getPayment
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      responses:
+        '200':
+          description: Payment details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  plan_amount:
+                    type: number
+                    format: double
+                    example: 29.99
+                  overdue_fine:
+                    type: number
+                    format: double
+                    example: 5.00
+        '400':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '402':
+          description: No active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+    post:
+      tags:
+        - Payment
+      summary: Process payment
+      description: Process payment for outstanding invoice
+      operationId: processPayment
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payment_amount
+              properties:
+                payment_amount:
+                  type: number
+                  format: double
+                  description: Payment amount
+                  example: 29.99
+      responses:
+        '200':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: Session not found or payment failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '402':
+          description: No active subscription or payment processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+  /query/query:
+    post:
+      tags:
+        - SQL Editor
+      summary: Execute SQL query
+      description: Execute SQL queries with tenant isolation and tier-based permissions
+      operationId: executeQuery
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: SQL query to execute
+                  example: "SELECT * FROM Customer LIMIT 10"
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      rows_count:
+                        type: integer
+                        example: 10
+                      rows:
+                        type: array
+                        description: Result rows for SELECT queries
+                      insertId:
+                        type: integer
+                        description: Insert ID for INSERT queries
+                        example: 1
+                      affectedRows:
+                        type: integer
+                        description: Affected rows for UPDATE/DELETE
+                        example: 5
+                      message:
+                        type: string
+                        description: Message for other operations
+        '400':
+          description: Missing session, invalid query, or query execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Permission denied (tier restrictions or tenant violation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+  /query/exportData:
+    post:
+      tags:
+        - SQL Editor
+      summary: Export data
+      description: Export query results to PDF or Excel format
+      operationId: exportData
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          description: Session ID from login
+          schema:
+            type: integer
+            example: 12345
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - responseData
+                - exportType
+              properties:
+                responseData:
+                  type: object
+                  required:
+                    - data
+                  properties:
+                    data:
+                      type: object
+                      required:
+                        - rows_count
+                        - rows
+                      properties:
+                        rows_count:
+                          type: integer
+                          example: 10
+                        rows:
+                          type: array
+                          items:
+                            type: object
+                exportType:
+                  type: string
+                  enum:
+                    - pdf
+                    - excel
+                    - xlsx
+                  description: Export format
+                  example: excel
+      responses:
+        '200':
+          description: File exported successfully
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: User or client inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionAuth: []
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if server is running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Server is running
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-01-01T12:00:00.000Z"
+      security: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: header
+      name: x-session-id
+      description: Session ID obtained from login endpoint
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              example: 400
+            message:
+              type: string
+              example: Username and password are required
+            details:
+              type: string
+              description: Optional error details
+
+  responses:
+    UnauthorizedError:
+      description: Authentication information is missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenError:
+      description: Access to the requested resource is forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundError:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
