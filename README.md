@@ -240,18 +240,18 @@ The system implements strict Role-Based Access Control (RBAC) defined by `tier_l
 
 ## 10. Indexing & Performance
 
-**Key Indexes Created:**
-- `idx_plan_client (client_id, plan_id)`: Reduces query time significantly when checking for active plans during plan statistics.
-- `idx_customer_client (client_id, customer_id)`: Reduces query time significantly when checking for active customers during user queries.
-- `idx_user (username)`: Reduces query time significantly when checking for username and password during login.
-- `idx_subscription_client (client_id, subscription_id)`: Reduces query time significantly when checking for active subscriptions during subscription statistics.
-- `idx_subscription_customer (client_id, customer_id)`: Reduces query time significantly when checking for active subscriptions for a user during subscription statistics.
-- `idx_subscription_plan (client_id, plan_id)`: Reduces query time significantly when checking for active subscriptions for a plan during subscription statistics.
-- `idx_invoice_subscription (subscription_id, status, invoice_date)`: Reduces query time significantly when checking for latest paid invoice during invoice generation.
-- `idx_invoice_dates (status, due_date, subscription_id)`: Reduces query time significantly when checking for pending invoice during overdue generation.
-- `idx_payment_date (payment_date)`: Reduces query time significantly when checking for timely revenue. (Unchanged)
-- `idx_penalty_applied (invoice_id, applied, created_at)`: Reduces query time significantly when checking overdue charges during payment. (unchanged)
-- `idx_penalty_date (penalty_date)`: Reduces query time significantly when checking unpaid overdue. (unchanged)
+**Key Indexes Created:** (Before - After, time)
+- `idx_plan_client (client_id, plan_id)`: Reduces query time significantly when checking for active plans during plan statistics. (-573 µs)
+- `idx_customer_client (client_id, customer_id)`: Reduces query time significantly when checking for active customers during user queries. (-186 µs)
+- `idx_user (username)`: Reduces query time significantly when checking for username and password during login. (-149 µs)
+- `idx_subscription_client (client_id, subscription_id)`: Reduces query time significantly when checking for active subscriptions during subscription statistics. (-24 µs, )
+- `idx_subscription_customer (client_id, customer_id)`: Reduces query time significantly when checking for active subscriptions for a user during subscription statistics. (-133 µs)
+- `idx_subscription_plan (client_id, plan_id)`: Reduces query time significantly when checking for active subscriptions for a plan during subscription statistics. (-225 µs)
+- `idx_invoice_subscription (subscription_id, status, invoice_date)`: Reduces query time significantly when checking for latest paid invoice during invoice generation. (+247)
+- `idx_invoice_dates (status, due_date, subscription_id)`: Reduces query time significantly when checking for pending invoice during overdue generation. (-45 µs)
+- `idx_payment_date (payment_date)`: Reduces query time significantly when checking for timely revenue. (+99 µs)
+- `idx_penalty_applied (invoice_id, applied, created_at)`: Reduces query time significantly when checking overdue charges during payment. (-53 µs)
+- `idx_penalty_date (penalty_date)`: Reduces query time significantly when checking unpaid overdue. (+39 µs)
 
 **Performance Impact:** 
 Querying open invoices without indexing resulted in complete vertical table scans in InnoDB. Applying `idx_invoice_dates` dropped execution latency and row scans to `<1ms` for standard subset fetches.
