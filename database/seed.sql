@@ -317,15 +317,15 @@ INSERT INTO Plan (client_id, plan_name, tier_1_users, tier_2_users, tier_3_users
 SET @demo_plan_id = LAST_INSERT_ID();
 
 INSERT INTO Subscription (client_id, customer_id, plan_id, start_date, end_date, status, auto_renew) VALUES
-(@demo_client_id, NULL, 2, '2026-04-05', '2027-01-01', 'Active', TRUE);
+(@demo_client_id, NULL, 2, '2026-04-01', '2027-01-01', 'Active', TRUE);
 SET @demo_subscription_id = LAST_INSERT_ID();
 
 INSERT INTO User (client_id, username, email, password_hash, tier_level, status, created_by) VALUES
 (@demo_client_id, 'overdue.admin', 'overdue.admin@saas.com', '$2b$10$wxS60dreRI7szSTndXH2nODOjqmbiR.wH7hpcjptgaT8K5Us/RUr2', 1, 'Active', 1);
 
 INSERT INTO Invoice (subscription_id, invoice_date, due_date, amount, paid_amount, status, paid_date) VALUES
-(@demo_subscription_id, '2026-02-01', '2026-02-02', 99.99, 0.00, 'Overdue', NULL);
+(@demo_subscription_id, '2026-04-05', '2026-04-07', 99.99, 0.00, 'Overdue', NULL);
 SET @demo_invoice_id = LAST_INSERT_ID();
 
 INSERT INTO OverduePenalty (invoice_id, penalty_date, applied, created_at) VALUES
-(@demo_invoice_id, '2026-02-04', FALSE, '2026-02-04 00:00:00');
+(@demo_invoice_id, '2026-04-10', FALSE, '2026-04-10 00:00:00');

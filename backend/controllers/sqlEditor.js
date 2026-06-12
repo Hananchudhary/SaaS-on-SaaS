@@ -592,11 +592,11 @@ const executeQuery = async (req, res) => {
                 const [results] = await connection.query(finalQuery);
 
                 const tableNames = tables.map(t => t.name).join(',');
-                await connection.query(
-                    `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
-                     VALUES (?, ?, ?, NOW(), 'Success')`,
-                    [userId, operation, tableNames]
-                );
+                // await connection.query(
+                //     `INSERT INTO AccessLog (user_id, action, table_name, timestamp, status)
+                //      VALUES (?, ?, ?, NOW(), 'Success')`,
+                //     [userId, operation, tableNames]
+                // );
 
                 const responseData = { success: true, data: {} };
                 if (operation.toUpperCase() === 'SELECT') {
